@@ -48,6 +48,7 @@ typedef const struct si_pub  si_t;
 #include <proto/ethernet.h>
 #include <dngl_stats.h>
 #include <dhd.h>
+
 #define WL_ERROR(x) printf x
 #define WL_TRACE(x)
 #define WL_ASSOC(x)
@@ -88,6 +89,7 @@ typedef const struct si_pub  si_t;
 
 #define IW_WSEC_ENABLED(wsec)	((wsec) & (WEP_ENABLED | TKIP_ENABLED | AES_ENABLED | SMS4_ENABLED))
 
+#include "nvodm_query_discovery.h"
 #include <linux/rtnetlink.h>
 #include <linux/mutex.h>
 
@@ -106,6 +108,8 @@ static struct completion ap_cfg_exited;
 static int wl_iw_set_ap_security(struct net_device *dev, struct ap_profile *ap);
 static int wl_iw_softap_deassoc_stations(struct net_device *dev, u8 *mac);
 #endif
+
+int wl_con = 0;
 
 #define WL_IW_IOCTL_CALL(func_call) \
 	do {				\
@@ -1082,7 +1086,7 @@ wl_iw_set_suspend(
 		else
 			WL_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
 	}
-
+	Nv_WIFI_LED_Control(0);
 	return ret;
 }
 
@@ -2378,6 +2382,9 @@ wl_iw_get_range(
 		{30, 60, 90, 120, 180, 240, 270, 300}};
 
 	WL_TRACE(("%s: SIOCGIWRANGE\n", dev->name));
+
+	Nv_WIFI_LED_Control(wl_con);
+
 
 	if (!extra)
 		return -EINVAL;
@@ -7789,6 +7796,9 @@ wl_iw_check_conn_fail(wl_event_msg_t *e, char* stringBuf, uint buflen)
 void
 wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 {
+
+Nv_WIFI_LED_Control(wl_con);
+
 #if WIRELESS_EXT > 13
 	union iwreq_data wrqu;
 	char extra[IW_CUSTOM_MAX + 1];
@@ -7861,6 +7871,7 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 	case WLC_E_REASSOC_IND:
 #if defined(SOFTAP)
 		WL_SOFTAP(("STA connect received %d\n", event_type));
+
 		if (ap_cfg_running) {
 			wl_iw_send_priv_event(priv_dev, "STA_JOIN");
 			goto wl_iw_event_end;
@@ -7939,16 +7950,23 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 			g_ss_cache_ctrl.m_link_down = 1;
 #endif
 			WL_TRACE(("Link Down\n"));
+			//hack for Hannspad switch off led by Alan B
+			
+			wl_con = 0;
+			Nv_WIFI_LED_Control(0);
+
 
 			bzero(wrqu.addr.sa_data, ETHER_ADDR_LEN);
 			bzero(&extra, ETHER_ADDR_LEN);
 		}
 		else {
+
 			memcpy(wrqu.addr.sa_data, &e->addr, ETHER_ADDR_LEN);
 			g_ss_cache_ctrl.m_link_down = 0;
 
 			memcpy(g_ss_cache_ctrl.m_active_bssid, &e->addr, ETHER_ADDR_LEN);
-
+			Nv_WIFI_LED_Control(1); //hack to switch on led when link is down by Alan B.
+			wl_con = 1;
 #ifdef SOFTAP
 #ifdef AP_ONLY
 			if (ap_cfg_running) {
@@ -7966,6 +7984,7 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 			}
 #endif
 			WL_TRACE(("Link UP\n"));
+
 
 		}
 		net_os_wake_lock_timeout_enable(dev);

@@ -466,7 +466,13 @@ static const NvOdmIoAddress s_AT168Address[] =
 {
 	{ NvOdmIoModule_I2c, 0, 0x5c ,0},
 	{ NvOdmIoModule_Gpio, (NvU32)'h'-'a', 1 ,0},	//Please set PH1 reset and must be first Gpio
-	{ NvOdmIoModule_Gpio, (NvU32)'j'-'a', 7 ,0}	//Please set PJ7 Interrupt and must be second Gpio
+
+	{ NvOdmIoModule_Gpio, (NvU32)'j'-'a', 7 ,0},	//Please set PJ7 Interrupt and must be second Gpio
+	#if (defined(CONFIG_7373C_V20))
+	{ NvOdmIoModule_Gpio, (NvU32)'k'-'a', 2 ,0},
+	#elif defined(CONFIG_7564C_V10)
+ 	{ NvOdmIoModule_Gpio, (NvU32)'n'-'a', 5 ,0},	//Please set PK2 VDD control and must be third Gpio  
+	#endif
 };
 
 const NvOdmIoAddress s_Bq24745Address[] = 

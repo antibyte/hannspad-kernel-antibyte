@@ -59,14 +59,14 @@
 // Voltage list for corresponding clocks
 NvU32 FakeShmooVoltages[] = {
 #if defined(CONFIG_NEWBL)
-	900,
+700,	//900,
 #endif
-	900,
-	900,
-	900,
-	950,
-	1025,
-	1125,
+750,	//900,
+800,	//900,
+850,	//900,
+900,	//950,
+950,	//1025,
+1000,	//1125,
 	MAX_VOLTAGE // New Entry
 };
 

@@ -66,6 +66,9 @@ typedef struct AT168_TouchDeviceRec
 	NvOdmServicesPmuHandle hPmu;
 	NvOdmGpioPinHandle hPinReset;
 	NvOdmGpioPinHandle hPinInterrupt;
+#if 1 //defined(CONFIG_7373C_V20)
+        NvOdmGpioPinHandle hPinPower;
+#endif
 	NvOdmServicesGpioIntrHandle hGpioIntr;
 	NvOdmOsSemaphoreHandle hIntSema;
 	NvBool PrevFingers;
@@ -1573,32 +1576,40 @@ void AT168_GetCapabilities (NvOdmTouchDeviceHandle hDevice, NvOdmTouchCapabiliti
 
 NvBool AT168_PowerOnOff (NvOdmTouchDeviceHandle hDevice, NvBool OnOff)
 {
-	AT168_PRINTF(("NvOdm Touch: AT168_PowerOnOff OnOff=%d \n", OnOff));
-	return NV_TRUE;
-	#if 0
-	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
-	if(!OnOff)
-	{
-		NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_TRUE);
-	}
-	else
-	{
-		msleep(100);
-		//Force reset, for some hexing touchsceeen can not boot up
-		NvOdmGpioSetState(hTouch->hGpio,
-	                	hTouch->hPinReset,
-	                	NvOdmGpioPinActiveState_Low);
-		msleep(5);
-		NvOdmGpioSetState(hTouch->hGpio,
-	               		hTouch->hPinReset,
-	                	NvOdmGpioPinActiveState_High);
-		msleep(60);
+//	AT168_PRINTF(("NvOdm Touch: AT168_PowerOnOff OnOff=%d \n", OnOff));
+//	return NV_TRUE;
+        #if 1 //defined(CONFIG_7373C_V20)
+        AT168_PRINTF(("NvOdm Touch: AT168_PowerOnOff OnOff=%d \n", OnOff));
 
-		NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_FALSE);		
-	}
+        AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+        if(OnOff)
+        {
+                NvOdmGpioSetState(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinActiveState_High);
 
-	return NV_TRUE;
-	#endif
+                msleep(50);
+                //Force reset, for some hexing touchsceeen can not boot up
+                NvOdmGpioSetState(hTouch->hGpio,
+                                hTouch->hPinReset,
+                                NvOdmGpioPinActiveState_Low);
+                msleep(5);
+                NvOdmGpioSetState(hTouch->hGpio,
+                                hTouch->hPinReset,
+                                NvOdmGpioPinActiveState_High);
+                msleep(60);
+
+                NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_FALSE);             
+
+        }
+        else
+       {
+                NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_TRUE);
+                NvOdmGpioSetState(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinActiveState_Low);
+        }
+        #endif
+
+        return NV_TRUE;
+
+
 }
 
 NvBool AT168_Open (NvOdmTouchDeviceHandle* hDevice)
@@ -1715,6 +1726,20 @@ NvBool AT168_Open (NvOdmTouchDeviceHandle* hDevice)
 		goto fail;
 	}
 	NvOdmGpioConfig(hTouch->hGpio, hTouch->hPinInterrupt, NvOdmGpioPinMode_InputData);
+
+#if 1 //defined(CONFIG_7373C_V20)
+        hTouch->hPinPower = NvOdmGpioAcquirePinHandle(hTouch->hGpio, GpioPort[2], GpioPin[2]);
+        if (!hTouch->hPinPower) {
+                NvOsDebugPrintf("NvOdm Touch : Couldn't get GPIO hPinPower \n");
+                //goto fail;
+        }
+        NvOdmGpioConfig(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinMode_Output);
+
+        NvOdmGpioSetState(hTouch->hGpio,
+                        hTouch->hPinPower,
+                        NvOdmGpioPinActiveState_High);
+#endif
+
 
 	/**********************************************************/
 	/* set default capabilities */

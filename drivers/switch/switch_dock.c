@@ -16,9 +16,8 @@
 #include <linux/workqueue.h>
 
 #include <linux/switch_dock.h>
-#include <linux/delay.h>
 
-#define __SWITCH_DOCK_GENERIC_DEBUG__		1
+#define __SWITCH_DOCK_GENERIC_DEBUG__		0
 
 #define TAG				"switch-dock:  "
 
@@ -37,14 +36,14 @@ struct dock_switch_device {
 	struct switch_dev sdev;
 	int 	gpio_desktop;
 	int 	irq_desktop;
-	int		gpio_desktop_active_low;
+	int	gpio_desktop_active_low;
 	int 	gpio_car;
 	int 	irq_car;
-	int		gpio_car_active_low;
-	int		state;
+	int	gpio_car_active_low;
+	int	state;
 	struct work_struct work;
 };
-extern int h2w_switch_update(void);
+
 static void dock_switch_work_func(struct work_struct *work) 
 {
 	int state = 0, value;
@@ -81,7 +80,6 @@ static irqreturn_t dock_switch_irq_handler(int irq, void *arg)
 	struct dock_switch_device *dock_switch = (struct dock_switch_device *)arg;
 	logd("dock_switch_irq_handler\n");
 	schedule_work(&dock_switch->work);
-	h2w_switch_update();
 	return IRQ_HANDLED;
 }
 
@@ -92,37 +90,20 @@ static ssize_t dock_switch_print_state(struct switch_dev *sdev, char *buffer)
 	return sprintf(buffer, "%d", dock_switch->state);
 }
 
-static struct dock_switch_device *p_dock_switch=NULL;
-
-
-int desktop_dock_inserted(void)
-{
-	int inserted=0;
-	if(p_dock_switch&&p_dock_switch->gpio_desktop)
-	{
-		inserted = gpio_get_value(p_dock_switch->gpio_desktop);
-		//logd("desktop_dock_inserted inserted = %d,gpio_desktop_active_low=%d\n", inserted,gpio_desktop_active_low);
-		if(p_dock_switch->gpio_desktop_active_low) inserted=!inserted;
-		
-	}
-	
-	return inserted;
-}
-EXPORT_SYMBOL(desktop_dock_inserted);
-
-
 static int dock_switch_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct dock_switch_device *dock_switch;
 	struct dock_switch_platform_data *pdata = (struct dock_switch_platform_data *)
 			pdev->dev.platform_data;
+	
 	if (!pdata || (!pdata->gpio_desktop && !pdata->gpio_car))
 		return -EBUSY;
+	
 	dock_switch = kzalloc(sizeof(struct dock_switch_device), GFP_KERNEL);
 	if (!dock_switch)
 		return -ENOMEM;
-	
+
 	if (pdata->gpio_desktop) {
 		dock_switch->gpio_desktop = pdata->gpio_desktop;
 		dock_switch->gpio_desktop_active_low = pdata->gpio_desktop_active_low;
@@ -131,8 +112,6 @@ static int dock_switch_probe(struct platform_device *pdev)
 			loge("err_request_gpio_desktop\n");
 			goto err_request_gpio_desktop;
 		}
-
-		
 		gpio_direction_input(dock_switch->gpio_desktop);
 		dock_switch->irq_desktop = gpio_to_irq(dock_switch->gpio_desktop);
 		ret = request_irq(dock_switch->irq_desktop, dock_switch_irq_handler, 
@@ -142,9 +121,8 @@ static int dock_switch_probe(struct platform_device *pdev)
 			loge("err_request_irq_desktop\n");
 			goto err_request_irq_desktop;
 		}
-		
 	}
-	
+
 	if (pdata->gpio_car) {
 		dock_switch->gpio_car = pdata->gpio_car;
 		dock_switch->gpio_car_active_low = pdata->gpio_car_active_low;
@@ -163,8 +141,7 @@ static int dock_switch_probe(struct platform_device *pdev)
 			goto err_request_irq_car;
 		}
 	}
-	
-	
+
 	INIT_WORK(&dock_switch->work, dock_switch_work_func);
 	
 	dock_switch->sdev.name = DOCK_SWITCH_NAME;
@@ -174,16 +151,16 @@ static int dock_switch_probe(struct platform_device *pdev)
 		logd("err_register_switch\n");
 		goto err_register_switch;
 	}
+
 	if (dock_switch->irq_car) 
 		enable_irq(dock_switch->irq_car);
 	if (dock_switch->irq_desktop)
 		enable_irq(dock_switch->irq_desktop);
+
 	platform_set_drvdata(pdev, dock_switch);
-	p_dock_switch=dock_switch;
-	schedule_work(&dock_switch->work);
+
 	logd("dock_switch_probe() successed\n");
-	desktop_dock_inserted();
-	
+
 	return 0;
 
 err_register_switch:
@@ -200,9 +177,9 @@ err_request_irq_desktop:
 		gpio_free(dock_switch->gpio_desktop);
 err_request_gpio_desktop:
 	kfree(dock_switch);
-	
+
 	loge("dock_switch_probe() failed\n");
-	
+
 	return ret;
 }
 

@@ -55,7 +55,7 @@
 
 #ifndef NVMAP_BASE
 #define NVMAP_BASE 0xFEE00000
-#define NVMAP_SIZE SZ_2M
+#define NVMAP_SIZE SZ_4M    //was SZ_2M
 #endif
 
 static unsigned int trace_mask = 0;

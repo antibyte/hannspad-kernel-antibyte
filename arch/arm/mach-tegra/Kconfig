@@ -198,10 +198,21 @@ if TEGRA_ODM_KIT
 source "arch/arm/mach-tegra/odm_kit/Kconfig"
 endif
 
-config NEWBL
-        bool "New Bootloader"
-	default n
+if TEGRA_ODM_HARMONY
+source "arch/arm/mach-tegra/malata_smb/Kconfig"
+endif
+
+config OLDBL
+        bool "Old Bootloader"
+        default n
         help
-          Enables GTAB's and ZPAD's with the new bootloader to boot successfully.
+          Enables GTAB's and ZPAD's with the old bootloader to boot successfully.
+
+
+config NEWBL
+        bool "NEW Bootloader"
+        default y
+        help
+          Enables GTAB's and ZPAD's with the old bootloader to boot successfully.
 
 endif

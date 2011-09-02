@@ -16,10 +16,15 @@
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
 
+
+extern int is_ledon;
+
+
 struct device;
 /*
  * LED Core
  */
+
 
 enum led_brightness {
 	LED_OFF		= 0,
@@ -94,6 +99,8 @@ struct led_trigger {
 	struct list_head  next_trig;
 };
 
+
+
 /* Registration functions for complex triggers */
 extern int led_trigger_register(struct led_trigger *trigger);
 extern void led_trigger_unregister(struct led_trigger *trigger);
@@ -160,6 +167,7 @@ struct gpio_led_platform_data {
 					unsigned long *delay_on,
 					unsigned long *delay_off);
 };
+
 
 
 #endif		/* __LINUX_LEDS_H_INCLUDED */

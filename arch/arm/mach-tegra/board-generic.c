@@ -233,7 +233,7 @@ static struct i2c_board_info bus4_i2c_devices[] = {
 void __init i2c_device_setup(void)
 {
 	if (ARRAY_SIZE(bus0_i2c_devices))
-		i2c_register_board_info(0, bus0_i2c_devices,
+		i2c_register_board_info(0, bus0_i2c_devices,  
 					ARRAY_SIZE(bus0_i2c_devices));
 
 	if (ARRAY_SIZE(bus4_i2c_devices))

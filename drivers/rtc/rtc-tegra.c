@@ -312,7 +312,7 @@ static irqreturn_t tegra_rtc_irq_handler(int irq, void *dev_id)
 	rtc_update_irq(rtc_dev, 1, events);
 	return IRQ_HANDLED;
 }
- 
+
 static struct rtc_class_ops tegra_rtc_ops = {
 	.ioctl		= tegra_rtc_ioctl,
 	.read_time	= tegra_rtc_read_time,
@@ -326,31 +326,23 @@ static struct rtc_class_ops tegra_rtc_ops = {
 int internal_tegra_rtc_read_time(struct rtc_time *tm)
 {
         struct device *dev = &(rtc_dev->dev);
-
         return tegra_rtc_read_time(dev, tm);
 }
-
 int internal_tegra_rtc_set_time(struct rtc_time *tm)
 {
         struct device *dev = &(rtc_dev->dev);
-
         return tegra_rtc_set_time(dev, tm);
 }
-
 int internal_tegra_rtc_read_alarm(struct rtc_wkalrm *t)
 {
         struct device *dev = &(rtc_dev->dev);
-
         return tegra_rtc_read_alarm(dev, t);
 }
-
 int internal_tegra_rtc_set_alarm(struct rtc_wkalrm *t)
 {
         struct device *dev = &(rtc_dev->dev);
-        
         return tegra_rtc_set_alarm(dev, t);
 }
-
 static int __init tegra_rtc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -446,7 +438,6 @@ static int tegra_rtc_suspend(struct platform_device *pdev, pm_message_t state)
 static int tegra_rtc_resume(struct platform_device *pdev)
 {
 	struct device *dev=&pdev->dev;
-	//unsigned long sl_irq_flags;
 	unsigned int intr_status;
 
 	/* clear */

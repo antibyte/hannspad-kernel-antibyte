@@ -15,24 +15,7 @@
 #include <linux/earlysuspend.h>
 
 #include <nvodm_services.h>
-
-#define __SO340010_GENERIC_DEBUG__		1
-#define __I2C_SNAG_DETECTED__			0
-
-
-#define TAG				"SO340010: "
-
-#if (__SO340010_GENERIC_DEBUG__)
-#define logd(x...)		do { printk(x); } while(0)
-#else
-#define logd(x...)		do {} while(0)
-#endif
-
-
-#define SO340010_I2C_INSTANCE			0
-#define SO340010_I2C_ADDRESS			0x58
-#define SO340010_I2C_SPEED			100
-#define SO340010_I2C_TIMEOUT			NV_WAIT_INFINITE
+#include <linux/so340010_kbd.h>
 
 #define SO340010_I2C_TRY_COUNT			3
 
@@ -114,10 +97,17 @@ struct so340010_kbd_info {
 };
 
 static struct so340010_kbd_info key_table[] = {
+#if defined(CONFIG_7373C_V20)
+	{ 0x0008, KEY_SEARCH },
+	{ 0x0004, KEY_MENU },
+	{ 0x0002, KEY_BACK },
+	{ 0x0001, KEY_HOME },
+#else
 	{ 0x0008, KEY_BACK },
 	{ 0x0004, KEY_MENU },
 	{ 0x0002, KEY_HOME },
 	{ 0x0001, KEY_SEARCH },
+#endif
 };
 
 static int key_num = sizeof(key_table)/sizeof(key_table[0]);
@@ -128,12 +118,21 @@ struct so340010_register {
 };
 
 static struct so340010_register so340010_register_init_table[] = {
+#if defined(CONFIG_7373C_V20)
+	{ 0x0000, { 0x00, 0x07 } },
+	{ 0x0001, { 0x00, 0x20 } },
+	{ 0x0004, { 0x00, 0x0F } },
+//  { 0x000E, { 0x01, 0x00 } },
+	{ 0x0010, { 0xA0, 0xA0 } },
+	{ 0x0011, { 0xA0, 0xA0 } }, //{ 0x0011, { 0x00, 0xA0 } }, Changing this to 0xA0,0xA0 gives us the 4th Hardware button (Search)
+#else
 	{ 0x0000, { 0x00, 0x07 } },
 	{ 0x0001, { 0x00, 0x20 } },
 	{ 0x0004, { 0x00, 0x0F } },
 //	{ 0x000E, { 0x01, 0x00 } },
 	{ 0x0010, { 0xA0, 0xA0 } },
 	{ 0x0011, { 0xA0, 0xA0 } },
+#endif
 };
 
 #if (__SO340010_GENERIC_DEBUG__)
@@ -445,6 +444,9 @@ static int so340010_kbd_probe(struct platform_device *pdev)
 {
 	int i;
 	struct so340010_kbd_dev *dev;
+	NvU32 NumI2cConfigs;
+	struct so340010_kbd_platform_data *pdata;
+	const NvU32 *pI2cConfigs;
 
 	logd(TAG "so340010_kbd_probe\r\n");
 
@@ -455,12 +457,30 @@ static int so340010_kbd_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, dev);
 
+	pdata = pdev->dev.platform_data;
+	if(pdata==NULL){
+		printk(TAG "platform_get_drvdata == NULL \n");
+	}
+
 	/* open i2c */
-	dev->i2c_instance = SO340010_I2C_INSTANCE;
-	dev->i2c_address = SO340010_I2C_ADDRESS;
-	dev->i2c_speed = SO340010_I2C_SPEED;
-	dev->i2c_timeout = SO340010_I2C_TIMEOUT;
-	dev->i2c = NvOdmI2cOpen(NvOdmIoModule_I2c, dev->i2c_instance);
+	dev->i2c_instance = pdata->i2c_instance;
+	dev->i2c_address = pdata->i2c_address;
+	dev->i2c_speed = pdata->i2c_speed;
+	dev->i2c_timeout = pdata->i2c_timeout;
+
+	NvOdmQueryPinMux(NvOdmIoModule_I2c, &pI2cConfigs, &NumI2cConfigs);
+	if (dev->i2c_instance >= NumI2cConfigs) {
+	    printk(TAG "NvOdmQueryPinMux failed \r\n");
+	    return -EINVAL;
+	}
+
+	if (pI2cConfigs[dev->i2c_instance] == NvOdmI2cPinMap_Multiplexed) {
+	    logd(TAG "i2c config multiplexed\n");
+	    dev->i2c = NvOdmI2cPinMuxOpen(NvOdmIoModule_I2c, dev->i2c_instance, NvOdmI2cPinMap_Config2);
+	} else {
+	    dev->i2c = NvOdmI2cOpen(NvOdmIoModule_I2c, dev->i2c_instance);
+	}
+
 	if (!dev->i2c) {
 		logd(TAG "so340010_kbd_probe NvOdmI2cOpen fail \r\n");
 		goto failed_open_i2c;

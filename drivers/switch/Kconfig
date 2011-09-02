@@ -27,4 +27,9 @@ config SWITCH_DOCK
 	help
 	  Say Y here to enable dock switch.
 
+config SWITCH_HDMI
+	tristate "HDMI switch support"
+	help
+	  Say Y here to enable hdmi switch.
+
 endif # SWITCH

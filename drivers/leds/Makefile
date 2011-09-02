@@ -4,6 +4,12 @@ obj-$(CONFIG_NEW_LEDS)			+= led-core.o
 obj-$(CONFIG_LEDS_CLASS)		+= led-class.o
 obj-$(CONFIG_LEDS_TRIGGERS)		+= led-triggers.o
 
+# Added from ADAM
+
+obj-$(CONFIG_SMBA1006_BATTERY_LED)	+= leds-battery.o
+obj-$(CONFIG_SMB_WIFI_LED)		+= leds-wifi.o
+obj-$(CONFIG_LEDS_SMB)			+= leds-smb.o
+
 # LED Platform Drivers
 obj-$(CONFIG_LEDS_ATMEL_PWM)		+= leds-atmel-pwm.o
 obj-$(CONFIG_LEDS_BD2802)		+= leds-bd2802.o

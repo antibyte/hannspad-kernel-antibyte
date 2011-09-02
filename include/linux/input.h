@@ -234,8 +234,8 @@ struct input_absinfo {
 #define KEY_DELETE		111
 #define KEY_MACRO		112
 #define KEY_MUTE		113
-#define KEY_VOLUMEDOWN		114
-#define KEY_VOLUMEUP		115
+#define KEY_VOLUMEDOWN		114 //was 114
+#define KEY_VOLUMEUP		115 //was 115
 #define KEY_POWER		116	/* SC System Power Down */
 #define KEY_KPEQUAL		117
 #define KEY_KPPLUSMINUS		118

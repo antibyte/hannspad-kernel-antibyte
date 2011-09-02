@@ -103,3 +103,4 @@ EXPORT_SYMBOL(NvRmSpiOpen);
 EXPORT_SYMBOL(NvRmSpiClose);
 EXPORT_SYMBOL(NvRmSpiStartTransaction);
 EXPORT_SYMBOL(NvRmSpiGetTransactionData);
+EXPORT_SYMBOL(Nv_WIFI_LED_Control);
