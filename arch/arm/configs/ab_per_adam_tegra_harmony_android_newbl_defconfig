@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.32.43
-# Thu Sep  1 22:13:43 2011
+# Thu Sep  2 22:13:43 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -56,7 +56,7 @@ CONFIG_KERNEL_LZMA=y
 CONFIG_JRCU=y
 CONFIG_JRCU_DAEMON=y
 CONFIG_JRCU_DAEMON_PRIO=0
-CONFIG_JRCU_LAZY=y
+# CONFIG_JRCU_LAZY is not set
 CONFIG_PREEMPT_COUNT_CPU=y
 # CONFIG_TREE_RCU_TRACE is not set
 CONFIG_IKCONFIG=y
