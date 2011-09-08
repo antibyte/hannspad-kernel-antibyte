@@ -1086,7 +1086,7 @@ wl_iw_set_suspend(
 		else
 			WL_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
 	}
-	Nv_WIFI_LED_Control(0);
+//	Nv_WIFI_LED_Control(0);
 	return ret;
 }
 
@@ -2383,7 +2383,7 @@ wl_iw_get_range(
 
 	WL_TRACE(("%s: SIOCGIWRANGE\n", dev->name));
 
-	Nv_WIFI_LED_Control(wl_con);
+//	Nv_WIFI_LED_Control(wl_con);
 
 
 	if (!extra)
@@ -4923,7 +4923,7 @@ wl_iw_set_power(
 	pm = htod32(pm);
 	if ((error = dev_wlc_ioctl(dev, WLC_SET_PM, &pm, sizeof(pm))))
 		return error;
-
+	//Nv_WIFI_LED_Control(vwrq->disabled ? 0 : 1);
 	return 0;
 }
 
@@ -7797,7 +7797,7 @@ void
 wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 {
 
-Nv_WIFI_LED_Control(wl_con);
+//Nv_WIFI_LED_Control(wl_con);
 
 #if WIRELESS_EXT > 13
 	union iwreq_data wrqu;
@@ -7952,8 +7952,8 @@ Nv_WIFI_LED_Control(wl_con);
 			WL_TRACE(("Link Down\n"));
 			//hack for Hannspad switch off led by Alan B
 			
-			wl_con = 0;
-			Nv_WIFI_LED_Control(0);
+			//wl_con = 0;
+			//Nv_WIFI_LED_Control(0);
 
 
 			bzero(wrqu.addr.sa_data, ETHER_ADDR_LEN);
@@ -7966,7 +7966,7 @@ Nv_WIFI_LED_Control(wl_con);
 
 			memcpy(g_ss_cache_ctrl.m_active_bssid, &e->addr, ETHER_ADDR_LEN);
 			Nv_WIFI_LED_Control(1); //hack to switch on led when link is down by Alan B.
-			wl_con = 1;
+			//wl_con = 1;
 #ifdef SOFTAP
 #ifdef AP_ONLY
 			if (ap_cfg_running) {
