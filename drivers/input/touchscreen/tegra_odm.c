@@ -521,11 +521,11 @@ InBurnBootloader:
 				
 				case 1:
 					tegra_touch_fingers_dealwith(touch, coord, 1); //fingers = 1
-					msleep(10);
+					msleep(3);
 					break;
 				case 2:
 					tegra_touch_fingers_dealwith(touch, coord, 2); //fingers = 2
-					msleep(10);
+					msleep(3);
 					break;
 				default:
 					break;
