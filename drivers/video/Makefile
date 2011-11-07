@@ -144,5 +144,5 @@ obj-$(CONFIG_FB_DA8XX)		  += da8xx-fb.o
 # the test framebuffer is last
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o
 
-#video output switch sysfs driver
+# video output switch sysfs driver
 obj-$(CONFIG_VIDEO_OUTPUT_CONTROL) += output.o

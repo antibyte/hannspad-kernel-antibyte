@@ -5748,6 +5748,13 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			/* Force flow control as protection when stop come before ifconfig_down */
 			dhd_txflowcontrol(bus->dhd, 0, ON);
 #endif /* !defined(IGNORE_ETH0_DOWN) */
+
+// patch - antibyte 20111106
+#if !defined(OOB_INTR_ONLY)
+      /* to avoid supurious client interrupt during stop process */
+      bcmsdh_stop(bus->sdh);
+#endif /* !defined(OOB_INTR_ONLY) */
+// end patch
 			/* Expect app to have torn down any connection before calling */
 			/* Stop the bus, disable F2 */
 			dhd_bus_stop(bus, FALSE);

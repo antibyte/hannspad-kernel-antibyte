@@ -739,13 +739,15 @@ static int tegra_suspend_enter(suspend_state_t state)
 		mc_data[1] = readl(mc + MC_SECURITY_SIZE);
 	}
 
+// patch 20111106 - antibyte
 	for_each_irq_desc(irq, desc) {
-		if ((desc->status & IRQ_WAKEUP) &&
-		    (desc->status & IRQ_SUSPENDED)) {
-			get_irq_chip(irq)->unmask(irq);
+	    if ((desc->status & IRQ_WAKEUP) &&
+		(desc->status & IRQ_SUSPENDED) &&
+	        (get_irq_chip(irq)->unmask)) {
+	    get_irq_chip(irq)->unmask(irq);
 		}
 	}
-
+// patch end
 	if (!pdata->dram_suspend || !iram_save) {
 		/* lie about the power state so that the RM restarts DVFS */
 		NvRmPrivPowerSetState(s_hRmGlobal, NvRmPowerState_LP1);
@@ -753,12 +755,15 @@ static int tegra_suspend_enter(suspend_state_t state)
 	} else
 		tegra_suspend_dram(lp0_ok);
 
+// patch 20111106 - antibyte
 	for_each_irq_desc(irq, desc) {
 		if ((desc->status & IRQ_WAKEUP) &&
-		    (desc->status & IRQ_SUSPENDED)) {
-			get_irq_chip(irq)->mask(irq);
+	            (desc->status & IRQ_SUSPENDED) &&
+	            (get_irq_chip(irq)->mask)) {
+		get_irq_chip(irq)->mask(irq);
 		}
 	}
+// patch end
 
 	/* Clear DPD sample */
 	writel(0x0, pmc + PMC_DPD_SAMPLE);

@@ -23,6 +23,7 @@
 #include <linux/string.h>
 #include <linux/ctype.h>
 #include <linux/module.h>
+#include <linux/memcopy.h>
 
 #ifndef __HAVE_ARCH_STRNICMP
 /**
@@ -558,13 +559,19 @@ EXPORT_SYMBOL(memset);
  * You should not use this function to access IO space, use memcpy_toio()
  * or memcpy_fromio() instead.
  */
+// patch 20111106 - antibyte
 void *memcpy(void *dest, const void *src, size_t count)
 {
-	char *tmp = dest;
-	const char *s = src;
+//	char *tmp = dest;
+//	const char *s = src;
+    unsigned long dstp = (unsigned long)dest; 
+    unsigned long srcp = (unsigned long)src; 
 
-	while (count--)
-		*tmp++ = *s++;
+//	while (count--)
+//		*tmp++ = *s++;
+  /* Copy from the beginning to the end */ 
+    mem_copy_fwd(dstp, srcp, count);
+
 	return dest;
 }
 EXPORT_SYMBOL(memcpy);
@@ -581,27 +588,34 @@ EXPORT_SYMBOL(memcpy);
  */
 void *memmove(void *dest, const void *src, size_t count)
 {
-	char *tmp;
+/*	char *tmp;
 	const char *s;
 
 	if (dest <= src) {
 		tmp = dest;
 		s = src;
 		while (count--)
-			*tmp++ = *s++;
+			*tmp++ = *s++;*/
+  unsigned long dstp = (unsigned long)dest; 
+  unsigned long srcp = (unsigned long)src; 
+  if (dest - src >= count) { 
+      /* Copy from the beginning to the end */ 
+      mem_copy_fwd(dstp, srcp, count);
 	} else {
-		tmp = dest;
+/*		tmp = dest;
 		tmp += count;
 		s = src;
 		s += count;
 		while (count--)
-			*--tmp = *--s;
+			*--tmp = *--s;*/
+    /* Copy from the end to the beginning */ 
+    mem_copy_bwd(dstp, srcp, count);
 	}
 	return dest;
 }
 EXPORT_SYMBOL(memmove);
 #endif
-
+// patch end
 #ifndef __HAVE_ARCH_MEMCMP
 /**
  * memcmp - Compare two areas of memory

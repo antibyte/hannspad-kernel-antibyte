@@ -68,6 +68,9 @@ extern void NvRmPrivDvsRun(void);
 //Variables for AVP suspend operation
 extern NvRmDeviceHandle s_hRmGlobal;
 
+extern NvRmPrivLockSharedPll();
+extern NvRmPrivUnlockSharedPll();
+
 static NvRtHandle s_RtHandle = NULL;
 
 #define DEVICE_NAME "nvrm"
@@ -579,16 +582,20 @@ int tegra_pm_notifier(struct notifier_block *nb,
 			  unsigned long event, void *nouse)
 {
 	printk(KERN_INFO "%s: start processing event=%lx\n", __func__, event);
-
+// patch 20111106 - antibyte
 	// Notify the event to nvrm_daemon.
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
+		NvRmPrivLockSharedPll();
+		NvRmPrivDvsStop();
+		NvRmPrivUnlockSharedPll();
 #ifndef CONFIG_HAS_EARLYSUSPEND
 		notify_daemon(STRING_PM_DISPLAY_OFF);
 #endif
         notify_daemon(STRING_PM_SUSPEND_PREPARE);
-        NvRmPrivDvsStop();
+        // NvRmPrivDvsStop();
         break;
+// end patch
     case PM_POST_SUSPEND:
         notify_daemon(STRING_PM_POST_SUSPEND);
 #ifndef CONFIG_HAS_EARLYSUSPEND
