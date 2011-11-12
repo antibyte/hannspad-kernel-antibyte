@@ -323,12 +323,12 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-MODFLAGS	= -DMODULE -o2 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mcpu=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
+MODFLAGS	= -DMODULE -o2 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL	= -O1 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mcpu=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
-AFLAGS_KERNEL	= -O1 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mcpu=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
+CFLAGS_KERNEL	= -O1 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
+AFLAGS_KERNEL	= -O1 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
