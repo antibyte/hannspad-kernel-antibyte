@@ -263,6 +263,12 @@ static int tegra_otg_resume(struct platform_device * pdev)
 	struct tegra_otg_data *tegra_otg = platform_get_drvdata(pdev);
 	unsigned int temp;
 
+       /* Following delay is intentional.
+        * It is placed here after observing system hang.
+        * Root cause is not confirmed.
+        */
+       msleep(1);
+
 	/* enable the cable ID and VBUS interrupts */
 	temp = readl(tegra_otg->regs + TEGRA_USB_WAKEUP_REG_OFFSET);
 	temp |= (TEGRA_USB_ID_INT_ENABLE | TEGRA_USB_ID_PIN_WAKEUP_ENABLE);
