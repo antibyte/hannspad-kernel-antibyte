@@ -35,6 +35,8 @@
 
 /*	.section ".cpuinit.text", "ax"*/
 
+#define TTB_FLAGS 0x6A	@ IRGN_WBWA, OC_RGN_WBWA, S, NOS
+
 /*
  * spooled CPU context is 1KB / CPU
  */
@@ -49,6 +51,7 @@
 
 #define CTX_FPEXC	32
 #define CTX_FPSCR	36
+#define CTX_DIAGNOSTIC	40
 
 #define CTX_TTBR0	48
 #define CTX_TTBR1	52
@@ -123,6 +126,14 @@
 #define CTS_CP14_WPT_2	592
 #define CTS_CP14_WPT_3	600
 
+/*
+ * perfmon unit context :
+ *	2 32-bit control registers
+ *	1 32-bit cycle counter
+ *	for each counter 1 32-bit event select register and 1 32-bit value
+*/
+#define CTX_PERFMON	700
+
 #include "power.h"
 #include "power-macros.S"
 
@@ -144,6 +155,68 @@
 	orr	\pa, \pa, \tmp
 .endm
 
+/* cache flush code from arm.
+ * This corrupts registers r0 to r4, r12.
+ */
+.macro dcache_flush
+
+	@ disable l1 cache
+	dsb
+	mrc	p15, 0, r3, c1, c0, 0
+	bic	r3, #4			   @ clear C bit
+	mcr	p15, 0, r3, c1, c0, 0
+	dsb
+
+	@ no more data cache allocations can happen at l1.
+	@ until we finish cleaning the inner cache, any accesses to dirty data
+	@ (e.g. by translation table walks) may get the wrong (outer) data, so
+	@ we have to be sure everything that might be accessed is clean.
+	@ we already know that the translation tables are clean (see late_init).
+	dsb
+	mov	r0, #0			  @ select l1 data/unified cache
+	mcr	p15,2,r0,c0,c0,0
+	mrc	p15,1,r0,c0,c0,0	  @ read size
+	ubfx	r3, r0, #13, #15	  @ sets - 1
+	add	r3, r3, #1		  @ sets
+	ubfx	r4, r0, #0, #3		  @ log2(words per line) - 2
+	add	r4, r4, #4		  @ set shift = log2(bytes per line)
+	ubfx	r2, r0, #3, #10		  @ ways - 1
+	clz	r12, r2			  @ way shift
+	add	r2, r2, #1		  @ ways
+
+	@ r2,r3 inner, outer loop targets, r1 inner loop counter, r0 zero
+5:      cmp	r3, #0
+	beq	20f
+	sub	r3, r3, #1
+	mov	r1, r2
+
+10:     cmp	r1, #0
+	beq	5b
+	sub	r1, r1, #1
+	mov	r0, r1, lsl r12		  @ fill in way field
+	orr	r0, r0, r3, lsl r4	  @ fill in set field
+	mcr	p15,0,r0,c7,c14,2	  @ dccisw
+	b	10b
+20:
+.endm
+
+/* Sets cpu state to power down in scu and takes cpu out of coherency.
+ * This corrupts registers r0 to r3.
+ */
+.macro disable_coherency
+	/* Set power state to off in scu power status register. */
+	cpu_id	r0
+	mov32	r1, (TEGRA_ARM_PERIF_BASE-IO_CPU_PHYS+IO_CPU_VIRT+0x8)
+	ldrb	r2, [r1, r0]
+	orr	r2, r2, #3
+	strb	r2, [r1, r0]
+
+	mrc     p15, 0, r3, c1, c0, 1
+	bic     r3, #64			  @ clear SMP bit
+	mcr     p15, 0, r3, c1, c0, 1
+	dsb
+.endm
+
 /*
  *	__cortex_a9_save(unsigned int mode)
  *
@@ -163,16 +236,7 @@
 ENTRY(__cortex_a9_save)
 	mrs	r3, cpsr
 	cps	0x13			@ save off svc registers
-	mov	r1, sp
 	stmfd	sp!, {r3-r12, lr}
-
-	bic	r2, sp, #(L1_CACHE_BYTES-1)
-
-1:	mcr	p15, 0, r2, c7, c14, 1	@ clean out dirty stack cachelines
-	add	r2, r2, #L1_CACHE_BYTES
-	cmp	r2, r1
-	ble	1b
-	dsb
 
 	ctx_ptr	r8, r9
 	mov	r12, r0
@@ -222,6 +286,8 @@ ENTRY(__cortex_a9_save)
 	VFPFMXR	FPEXC, r2
 	mrc	p15, 0, r3, c1, c0, 2	@ restore original FPEXC/CPACR
 #endif
+	mrc	p15, 0, r0, c15, c0, 1	@ diag
+	str	r0, [r8, #CTX_DIAGNOSTIC]
 
 	add	r9, r8, #CTX_TTBR0
 	mrc	p15, 0, r0, c2, c0, 0	@ TTBR0
@@ -253,7 +319,7 @@ ENTRY(__cortex_a9_save)
 	add	r9, r8, #CTX_IRQ_SPSR
 	stmia	r9, {r12,sp,lr}
 
-	cps	0x1b			@ Undefined mode
+	cps	0x1b			@ UNDEF mode
 	mrs	r12, spsr
 	add	r9, r8, #CTX_UND_SPSR
 	stmia	r9, {r12,sp,lr}
@@ -264,7 +330,7 @@ ENTRY(__cortex_a9_save)
 	mrs	r7, spsr
 	stmia	r1, {r7-r12,sp,lr}
 
-	cps	0x13			@ back to SVC
+	cps	0x13			@ back to SVC mode
 	mov	r8, r0
 
 	/* Save CP14 debug controller context */
@@ -309,10 +375,30 @@ ENTRY(__cortex_a9_save)
 	mrc	p14, 0, r3, c0, c3, 7
 	stmia	r9!, {r2-r3}     	@ WPT_0
 
+	/* save CP15 perfmon context */
+	add	r9, r8, #CTX_PERFMON
+	mrc	p15, 0, r2, c9, c12, 0	@ PMCR
+	bic	r0, r2, #1		@ disable counters
+	mcr	p15, 0, r0, c9, c12, 0
+	mrc	p15, 0, r3, c9, c12, 1	@ PMCNTENSET
+	mrc	p15, 0, r4, c9, c13, 0	@ PMCCNTR
+	stmia	r9!, {r2-r4}
+	mov	r0, r0, LSR #11
+	and	r0, r0, #0x3f
+	sub	r0, r0, #1
+1:
+	mcr	p15, 0, r0, c9, c12, 5	@ PMSELR
+	mrc	p15, 0, r4, c9, c13, 1	@ PMXEVTYPER
+	mrc	p15, 0, r5, c9, c13, 2	@ PMXEVCNTR
+	stmia	r9!, {r4-r5}
+	subs	r0, r0, #1
+	bpl	1b
+
+
 #ifdef CONFIG_CACHE_L2X0
 	cpu_id	r4
 	cmp	r4, #0
-	bne	__cortex_a9_save_clean_cache
+	bne	__cortex_a9_save_flush_cache
 	mov32	r4, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
 	add	r9, r8, #CTX_L2_CTRL
 	ldr	r0, [r4, #L2X0_CTRL]
@@ -323,32 +409,11 @@ ENTRY(__cortex_a9_save)
 	stmia	r9, {r0-r4}
 #endif
 
-
-__cortex_a9_save_clean_cache:
-	mov	r10, r8
-	add	r9, r10, #(CONTEXT_SIZE_BYTES)
-	add	r9, r9, #(L1_CACHE_BYTES-1)
-	bic	r10, r10, #(L1_CACHE_BYTES-1)
-	bic	r9, r9, #(L1_CACHE_BYTES-1)
-
-3:	mcr	p15, 0, r10, c7, c10, 1
-	add	r10, r10, #L1_CACHE_BYTES
-	cmp	r10, r9
-	blo	3b
-	dsb
-
+__cortex_a9_save_flush_cache:
 	translate r10, r8, r1
-
-	mov	r0, #0
-	mcr	p15, 0, r0, c1, c0, 1	@ exit coherency
-	isb
+	dcache_flush			@ flush L1 cache.
+	disable_coherency		@ exit from coherency.
 	cpu_id	r0
-	mov32	r1, (TEGRA_ARM_PERIF_BASE-IO_CPU_PHYS+IO_CPU_VIRT+0xC)
-	mov	r3, r0, lsl #2
-	mov	r2, #0xf
-	mov	r2, r2, lsl r3
-	str	r2, [r1]		@ invalidate SCU tags for CPU
-
 	cmp	r0, #0
 	bne	__put_cpu_in_reset
 	mov	r8, r10
@@ -400,6 +465,8 @@ ENTRY(__cortex_a9_restore)
 
 	mcr	p15, 2, r0, c0, c0, 0	@ csselr
 	mcr	p15, 0, r1, c1, c0, 0	@ sctlr
+	tst	r2, #(0x1 << 6)
+	orrne	r2, r2, #(1 << 0)	@ sync FW bit with SMP state
 	mcr	p15, 0, r2, c1, c0, 1	@ actlr
 	mcr	p15, 0, r3, c15, c0, 0	@ pctlr
 
@@ -437,9 +504,9 @@ ENTRY(__cortex_a9_restore)
 	isb
 
 	mov	r4, #0
-	mcr	p15, 0, r4, c8, c3, 0	@ invalidate TLB
-	mcr	p15, 0, r4, c7, c5, 6	@ flush BTAC
-	mcr	p15, 0, r4, c7, c5, 0	@ flush instruction cache
+	mcr	p15, 0, r4, c8, c3, 0	@ invalidate entire unified TLB Inner shareable.
+	mcr	p15, 0, r4, c7, c5, 6	@ invalidate entire branch predictor array.
+	mcr	p15, 0, r4, c7, c5, 0	@ invalidate all instruction caches to PoU.
 	dsb
 	isb
 
@@ -491,6 +558,24 @@ ENTRY(__cortex_a9_restore)
 	mcr	p14, 0, r0, c0, c2, 2	@ DSCR
 	isb
 
+	/* restore CP15 perfmon context */
+	add	r9, r8, #CTX_PERFMON
+	ldmia	r9!, {r2-r4}
+	mcr	p15, 0, r4, c9, c13, 0	@ PMCCNTR
+	mov	r0, r2, LSR #11
+	and	r0, r0, #0x3f
+	sub	r0, r0, #1
+1:
+	ldmia	r9!, {r4-r5}
+	mcr	p15, 0, r0, c9, c12, 5	@ PMSELR
+	mcr	p15, 0, r4, c9, c13, 1	@ PMXEVTYPER
+	mcr	p15, 0, r5, c9, c13, 2	@ PMXEVCNTR
+	subs	r0, r0, #1
+	bpl	1b
+
+	mcr	p15, 0, r3, c9, c12, 1	@ PMCNTENSET
+	mcr	p15, 0, r2, c9, c12, 0	@ PMCR
+
 #ifdef CONFIG_VFPv3
 	orr	r4, lr, #0xF00000
 	mcr	p15, 0, r4, c1, c0, 2	@ enable coproc access
@@ -505,9 +590,49 @@ ENTRY(__cortex_a9_restore)
 #endif
 	mcr	p15, 0, lr, c1, c0, 2	@ cpacr (loaded before VFP)
 
+#ifndef CONFIG_TRUSTED_FOUNDATIONS
+	//TL : moved to secure
+	ldr	r9, [r8, #CTX_DIAGNOSTIC]
+	mcr	p15, 0, r9, c15, c0, 1	@ diag
+#endif
+
+#if SANITY_CHECK_ARM_ERRATA_FIXES
+	mrc	p15, 0, r3, c0, c0, 0	@ read main ID register
+	and	r4, r3, #0x00f00000	@ variant
+	and	r5, r3, #0x0000000f	@ revision
+	orr	r5, r5, r4, lsr #20-4	@ combine variant and revision
+	mrc	p15, 0, r9, c15, c0, 1	@ read diagnostic register
+#ifdef CONFIG_ARM_ERRATA_743622
+	teq	r5, #0x20		@ present in r2p0
+	teqne	r5, #0x21		@ present in r2p1
+	teqne	r5, #0x22		@ present in r2p2
+	teqne	r5, #0x27		@ present in r2p7
+	teqne	r5, #0x29		@ present in r2p9
+	tsteq	r9, #(1 << 6)
+lh4:	beq	lh4
+#endif
+#ifdef CONFIG_ARM_ERRATA_751472
+	cmp	r5, #0x30		@ present prior to r3p0
+	bge	end1
+	tst	r9, #(1 << 11)
+lh5:	beq	lh5
+end1:
+#endif
+#ifdef CONFIG_ARM_ERRATA_752520
+	cmp	r5, #0x1F		@ not present in r1p*
+	ble	end2
+	cmp	r5, #0x29		@ present prior to r2p9
+	bge	end2
+	tst	r9, #(1 << 20)
+lh6:	beq	lh6
+end2:
+#endif
+#endif
+
 	/* finally, restore the stack and return */
 	ldmfd	sp!, {r3-r12, lr}
 	msr	cpsr_fsxc, r3		@ restore original processor mode
+        isb
 	mov	pc, lr
 ENDPROC(__cortex_a9_restore)
 
@@ -530,7 +655,6 @@ ENTRY(__cortex_a9_l2x0_restart)
 	mov     r4, #0x2                @ L2X0_DYNAMIC_CLK_GATING_EN
 	str     r4, [r9, #L2X0_PWR_CTRL]
 	cmp	r0, #0
-
 	beq	__reenable_l2x0
 
 	mov	r0, #0xff
@@ -557,8 +681,9 @@ ENTRY(__shut_off_mmu)
 	movw	r2, #(1<<12) | (1<<11) | (1<<2) | (1<<0)
 	bic	r3, r3, r2
 	dsb
-	mcr	p15, 0, r3, c1, c0, 0
 	isb
+	/* The following two instructions must be in the same cache line. */
+	mcr	p15, 0, r3, c1, c0, 0
 	bx	r9
 ENDPROC(__shut_off_mmu)
 
@@ -653,7 +778,7 @@ ENDPROC(__invalidate_cpu_state)
  */
 	.align L1_CACHE_SHIFT
 ENTRY(__return_to_virtual)
-	orr	r8, r0, #0x6A		@ TTB IRGN_WBWA, OC_RGN_WBWA, S, NOS
+	orr	r8, r0, #TTB_FLAGS
 	mov	lr, r1			@ "return" to ctx_restore
 	mov	r3, #0
 	mcr	p15, 0, r3, c2, c0, 2	@ TTB control register
@@ -664,7 +789,7 @@ ENTRY(__return_to_virtual)
 	mcr	p15, 0, r0, c3, c0, 0	@ domain access register
 
 	mov32	r0, 0xff0a89a8
-	mov32	r1, 0xc0e0c4e0
+	mov32	r1, 0xc0e044e0
 	mcr	p15, 0, r0, c10, c2, 0	@ PRRR
 	mcr	p15, 0, r1, c10, c2, 1	@ NMRR
 	mrc	p15, 0, r0, c1, c0, 0
@@ -700,8 +825,8 @@ ENDPROC(__return_to_virtual)
 	.align	L1_CACHE_SHIFT
 __turn_mmu_on_again:
 	mov	r0, r0
-	mcr	p15, 0, r0, c1, c0, 0	@ SCTLR
-	mrc	p15, 0, r3, c0, c0, 0	@ MIDR
+	mcr	p15, 0, r0, c1, c0, 0
+	mrc	p15, 0, r3, c0, c0, 0
 	mov	r3, r3
 	mov	r3, lr
 	bx	lr
