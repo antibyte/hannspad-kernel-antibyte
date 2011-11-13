@@ -190,9 +190,9 @@ static void tegra_ehci_restart (struct usb_hcd *hcd)
 	ehci_readl(ehci, &ehci->regs->command);
 	up_write(&ehci_cf_port_reset_rwsem);
 
-	/* Turn On Interrupts */
-	ehci_writel(ehci, INTR_MASK, &ehci->regs->intr_enable);
-}
+	/* Turn On Interrupts 
+	ehci_writel(ehci, INTR_MASK, &ehci->regs->intr_enable);*/
+}      
 #endif
 
 static void tegra_ehci_shutdown (struct usb_hcd *hcd)
