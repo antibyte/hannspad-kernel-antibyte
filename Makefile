@@ -221,7 +221,7 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -fomit-frame-pointer
 HOSTCXXFLAGS = -O2
 
 # Decide whether to build built-in, modular, or both.
@@ -323,12 +323,12 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-MODFLAGS	= -DMODULE -o2 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
+MODFLAGS	= -DMODULE -o2 -ftree-vectorize -fbranch-target-load-optimize2 -fipa-pta -pipe -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -ffast-math -DPERFORMANCE_RUN=1
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL	= -O1 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
-AFLAGS_KERNEL	= -O1 -pipe -floop-optimize -falign-loops -falign-labels -falign-functions -falign-jumps -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -DPERFORMANCE_RUN=1
+CFLAGS_KERNEL	= -O1 -pipe -fbranch-target-load-optimize2 -fipa-pta -ftree-vectorize -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -fomit-frame-pointer -ffast-math -DPERFORMANCE_RUN=1
+AFLAGS_KERNEL	= -O1 -pipe -fbranch-target-load-optimize2 -fipa-pta -ftree-vectorize -march=armv7-a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mfloat-abi=soft -fomit-frame-pointer -ffast-math -DPERFORMANCE_RUN=1
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
