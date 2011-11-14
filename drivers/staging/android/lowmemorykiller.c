@@ -61,7 +61,7 @@ static struct task_struct *lowmem_deathpending;
 static unsigned long lowmem_deathpending_timeout;
 
 #ifdef CONFIG_SWAP
-static int fudgeswap = 2048;
+static int fudgeswap = 256;
 #endif
 
 #define lowmem_print(level, x...)			\
