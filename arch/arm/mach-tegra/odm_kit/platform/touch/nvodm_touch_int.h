@@ -24,9 +24,10 @@
 
 
 // Module debug: 0=disable, 1=enable
-#define NVODMTOUCH_ENABLE_PRINTF (0)
+//#define NVODMTOUCH_ENABLE_PRINTF (1)
 
-#if (NV_DEBUG && NVODMTOUCH_ENABLE_PRINTF)
+//#if (NV_DEBUG && NVODMTOUCH_ENABLE_PRINTF)
+#if (NVODMTOUCH_ENABLE_PRINTF)
 #define NVODMTOUCH_PRINTF(x)   NvOdmOsDebugPrintf x
 #else
 #define NVODMTOUCH_PRINTF(x)

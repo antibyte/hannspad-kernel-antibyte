@@ -43,6 +43,9 @@ struct gpio_keys_drvdata {
 static unsigned int f4_send_state = 0;
 struct wake_lock f4_wake_lock;
 
+/* create an own workqueue for gpio_keys */
+static struct workqueue_struct *wq_struct;
+
 static void gpio_keys_report_event(struct work_struct *work)
 {
 	struct gpio_button_data *bdata =
@@ -100,7 +103,7 @@ static void gpio_keys_timer(unsigned long _data)
 {
 	struct gpio_button_data *data = (struct gpio_button_data *)_data;
 
-	schedule_work(&data->work);
+	queue_work(wq_struct, &data->work);
 }
 
 struct gpio_button_data *bdata_F4 =NULL;
@@ -122,7 +125,7 @@ void F4_Deal(unsigned int wake_up_flag)
 			mod_timer(&bdata->timer,
 				jiffies + msecs_to_jiffies(button->debounce_interval));
 		else
-			schedule_work(&bdata->work);
+			queue_work(wq_struct, &bdata->work);
 	}
 }
 
@@ -137,7 +140,7 @@ static irqreturn_t gpio_keys_isr(int irq, void *dev_id)
 		mod_timer(&bdata->timer,
 			jiffies + msecs_to_jiffies(button->debounce_interval));
 	else
-		schedule_work(&bdata->work);
+		queue_work(wq_struct, &bdata->work);
 
 	return IRQ_HANDLED;
 }
@@ -189,7 +192,6 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 		setup_timer(&bdata->timer,
 			    gpio_keys_timer, (unsigned long)bdata);
 		INIT_WORK(&bdata->work, gpio_keys_report_event);
-
 		
 		printk("gpio_keys_report_event=%d\n",button->code);
 		if(button->code==KEY_F4)
@@ -288,10 +290,10 @@ static int __devexit gpio_keys_remove(struct platform_device *pdev)
 		free_irq(irq, &ddata->data[i]);
 		if (pdata->buttons[i].debounce_interval)
 			del_timer_sync(&ddata->data[i].timer);
-		cancel_work_sync(&ddata->data[i].work);
 		gpio_free(pdata->buttons[i].gpio);
 	}
 
+	destroy_workqueue(wq_struct);
 	input_unregister_device(input);
 
         wake_lock_destroy(&f4_wake_lock);
@@ -326,8 +328,8 @@ static int gpio_keys_resume(struct device *dev)
 	struct gpio_keys_platform_data *pdata = pdev->dev.platform_data;
 	int i;
 
-        flush_scheduled_work();
-
+        flush_workqueue(wq_struct);
+	
 	if (device_may_wakeup(&pdev->dev)) {
 		for (i = 0; i < pdata->nbuttons; i++) {
 			struct gpio_keys_button *button = &pdata->buttons[i];
@@ -341,7 +343,7 @@ static int gpio_keys_resume(struct device *dev)
         /* F4_Deal */
         F4_Deal(2);
 
-        flush_scheduled_work();
+        flush_workqueue(wq_struct);
 
 	return 0;
 }
@@ -366,6 +368,8 @@ static struct platform_driver gpio_keys_device_driver = {
 
 static int __init gpio_keys_init(void)
 {
+	/* private workqueue instead global for gpio_keys */
+	wq_struct=create_singlethread_workqueue("gpio_keys");
 	return platform_driver_register(&gpio_keys_device_driver);
 }
 

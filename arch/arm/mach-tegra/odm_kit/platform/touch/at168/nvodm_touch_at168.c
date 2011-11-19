@@ -1407,7 +1407,7 @@ OpenCandoFileSuccess:
 		}
 		else
 		{
-			AT168_PRINTF("AT168_BurnCandoBootloader step 7.1  AT168_Bootloader_Write  ResetTPcommand success \n");
+			AT168_PRINTF(("AT168_BurnCandoBootloader step 7.1  AT168_Bootloader_Write  ResetTPcommand success \n"));
 		}
 		nLoop ++;
 		msleep(3);

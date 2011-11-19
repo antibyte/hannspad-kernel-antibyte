@@ -2004,9 +2004,9 @@ static void Resume_Isr(void *arg)
 
         if(atomic_add_return(1, &resume_isr_lock) != 1) {
                 atomic_sub(1, &resume_isr_lock);
+                printk("ISR Lock is %d\n", resume_isr_lock);
                 goto left;
         }
-
         /* If it is already released, left */
         if(((gpio_get_value(pinnum)& 0x1)) && (WAKE_UP_FROM_LP1_FLAG != 1)) { 
                 printk("Already release, left--> \n ");
@@ -2015,13 +2015,14 @@ static void Resume_Isr(void *arg)
 
         do_gettimeofday(&start_time);
 
-        //Add for double click in 250ms; 2011-03-01
-        if(WAKE_UP_FROM_LP1_FLAG != 1) {
+        //Add for double click in 350ms; 2011-03-01
+        //if(WAKE_UP_FROM_LP1_FLAG != 1) {
                 if((( start_time.tv_sec == last_receive_time.tv_sec )) && 
-                   (( start_time.tv_usec - last_receive_time.tv_usec ) < 250000)) {
+                   (( start_time.tv_usec - last_receive_time.tv_usec ) < 350000)) {
+                        printk("Debounce : double click detected\n");
                         goto left;
                 }
-        }
+        //}
 
         /* If it's the press for wake-up, send out a "KEY_F4" */
         if((WAKE_UP_FROM_LP1_FLAG == 1) && (delatime < 1)) {
@@ -2074,6 +2075,7 @@ static void Resume_Isr(void *arg)
                 } else if (delatime >= 1) {
                         if(screen_flag == 1) {
                                 printk("Left2Light(noflag)-->");
+                                printk("delatime = %d\n",delatime);
                                 PM_SCREEN_IS_OFF = 0;
                                 /* Must left to avoid tegra-ghrost error */
                                 F4_Deal(3);

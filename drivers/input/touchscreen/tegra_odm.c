@@ -536,7 +536,7 @@ HandleInterrupt:
 			{
 				//if(!touch->bSuspended){
 				tegra_touch_fingers_dealwith(touch, coord, 0); //fingers = 0
-				msleep(30);
+				msleep(20);
 				//}
 				bKeepReadingSamples = NV_FALSE;
 			}
