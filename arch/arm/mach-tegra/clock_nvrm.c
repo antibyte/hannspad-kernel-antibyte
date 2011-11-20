@@ -164,7 +164,7 @@ static int tegra_periph_clk_set_rate(struct clk *c, unsigned long rate)
 		freq = max_t(NvRmFreqKHz, c->rate_min, freq);
 	} else {
 		/* If no tolerance, and no low limit - let RM find the
-		   best approximation to the target */
+		   best approximation to the tarlist_forget */
 		max = min = NvRmFreqUnspecified;
 	}
 
@@ -449,7 +449,6 @@ long clk_round_rate(struct clk *c, unsigned long rate)
 }
 EXPORT_SYMBOL(clk_round_rate);
 
-
 void __init tegra_init_clock(void)
 {
 	NvError e = NvSuccess;
@@ -465,6 +464,8 @@ void __init tegra_init_clock(void)
 	NvRmPowerRegister(s_hRmGlobal, 0, &busy_pwr_client_2d);
 	NvRmPowerRegister(s_hRmGlobal, 0, &busy_pwr_client_3d);
 	tegra2_init_clocks();
+
+
 
 #ifdef CONFIG_USE_ARM_TWD_PRESCALER
 	cpu_clk = clk_get_sys(NULL, "cpu");
@@ -617,5 +618,4 @@ void tegra_clk_resume(void)
 	writel(*ctx++, car + CLK_RESET_CLK_MASK_ARM);
 	BUG_ON(ctx-clk_rst != ARRAY_SIZE(clk_rst));
 }
-
 #endif
