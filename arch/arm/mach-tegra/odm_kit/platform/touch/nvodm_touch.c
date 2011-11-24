@@ -89,6 +89,12 @@ NvOdmTouchReadCoordinate( NvOdmTouchDeviceHandle hDevice, NvOdmTouchCoordinateIn
 }
 
 NvBool
+NvOdmTouchReadInitData( NvOdmTouchDeviceHandle hDevice, NvOdmTouchInitDataInfo *InitData)
+{
+	return hDevice->ReadInitData(hDevice, InitData);
+}
+
+NvBool
 NvOdmTouchGetSampleRate(NvOdmTouchDeviceHandle hDevice, NvOdmTouchSampleRate* pTouchSampleRate)
 {
     return hDevice->GetSampleRate(hDevice, pTouchSampleRate);
@@ -153,3 +159,14 @@ NvOdmTouchBurnBootloader(NvOdmTouchDeviceHandle hDevice)
     return hDevice->BurnBootloader(hDevice);
 }
 
+void
+NvOdmTouchSetBaseline(NvOdmTouchDeviceHandle hDevice)
+{
+    hDevice->SetBaseline(hDevice);
+}
+
+void
+NvOdmTouchSetCalibrateResult(NvOdmTouchDeviceHandle hDevice)
+{
+    hDevice->SetCalibrateResult(hDevice);
+}

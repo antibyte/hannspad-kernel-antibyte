@@ -21,6 +21,13 @@
 
 #define SO340010_TIMER_INTERVAL			2000
 
+#if defined (CONFIG_KEYBOARD_SO340010_LED)
+#define KEY0			0x1
+#define KEY1			0x2
+#define KEY2			0x4
+#define KEY3			0x8
+#define KEY_ALL			(KEY0 | KEY1 | KEY2 | KEY3)
+#endif
 /*
  * TODO irq gpio number should be modify in SMBA1102 
  */
@@ -31,6 +38,28 @@
 #define SO340010_REG_GENERAL_CONFIG		0x0001
 #define SO340010_REG_GPIO_STATE			0x0108
 #define SO340010_REG_BUTTON_STATE		0x0109
+
+#if defined (CONFIG_KEYBOARD_SO340010_LED)
+#define SO340010_REG_GPIO_CTRL			0x000E
+#define SO340010_REG_GPIO_CTRL_DIR		0x0F00
+#define SO340010_REG_GPIO_CTRL_DATA		0x000F
+
+#define SO340010_REG_LED_ENABLE			0x0022
+#define SO340010_REG_LED_EFFECT_PERIOD	0x0023
+
+#define SO340010_REG_LED_CTRL1			0x0024
+#define SO340010_REG_LED_CTRL1_LED0_EFFECT		0x001F
+#define SO340010_REG_LED_CTRL1_LED0_BRIGHTNESS	0x0E00
+#define SO340010_REG_LED_CTRL1_LED1_EFFECT		0x000E
+#define SO340010_REG_LED_CTRL1_LED1_BRIGHTNESS	0x1F00
+
+#define SO340010_REG_LED_CONTROL_2		0x0025
+#define SO340010_REG_LED_CTRL2_LED2_EFFECT		0x001F
+#define SO340010_REG_LED_CTRL2_LED2_BRIGHTNESS	0x0E00
+#define SO340010_REG_LED_CTRL2_LED3_EFFECT		0x000E
+#define SO340010_REG_LED_CTRL2_LED3_BRIGHTNESS	0x1F00
+
+#endif
 #define SO340010_REG_NUM				74
 
 #if (__SO340010_GENERIC_DEBUG__)
@@ -70,7 +99,11 @@ struct so340010_kbd_dev {
 
 	/* work */
 	struct work_struct work;
-
+#if defined (CONFIG_KEYBOARD_SO340010_LED)
+	struct delayed_work led_work;
+	u64 last_touch;
+	int led_mask;
+#endif
 	/* workqueue */
 	struct workqueue_struct *workqueue;
 
@@ -102,6 +135,16 @@ static struct so340010_kbd_info key_table[] = {
 	{ 0x0004, KEY_MENU },
 	{ 0x0002, KEY_BACK },
 	{ 0x0001, KEY_HOME },
+#elif (defined(CONFIG_7332C_V21)||defined(CONFIG_7705C_V10))
+	{ 0x0008, KEY_SEARCH },
+    { 0x0004, KEY_MENU },
+    { 0x0002, KEY_HOME },
+    { 0x0001, KEY_BACK },
+#elif defined(CONFIG_7546Y_V10)
+    { 0x0008, KEY_SEARCH },
+    { 0x0004, KEY_MENU },
+    { 0x0002, KEY_BACK },
+    { 0x0001, KEY_HOME },
 #else
 	{ 0x0008, KEY_BACK },
 	{ 0x0004, KEY_MENU },
@@ -124,7 +167,21 @@ static struct so340010_register so340010_register_init_table[] = {
 	{ 0x0004, { 0x00, 0x0F } },
 //  { 0x000E, { 0x01, 0x00 } },
 	{ 0x0010, { 0xA0, 0xA0 } },
-	{ 0x0011, { 0xA0, 0xA0 } }, //{ 0x0011, { 0x00, 0xA0 } }, Changing this to 0xA0,0xA0 gives us the 4th Hardware button (Search)
+	{ 0x0011, { 0x00, 0xA0 } },
+#elif (defined(CONFIG_7332C_V21)||defined(CONFIG_7705C_V10))
+	{ 0x0000, { 0x00, 0x07 } },
+    { 0x0001, { 0x00, 0x20 } },
+    { 0x0004, { 0x00, 0x07 } },
+//  { 0x000E, { 0x01, 0x00 } },
+    { 0x0010, { 0x80, 0x80 } },
+    { 0x0011, { 0x00, 0x80 } },
+#elif defined(CONFIG_7546Y_V10)
+	{ 0x0000, { 0x00, 0x07 } },
+    { 0x0001, { 0x00, 0x20 } },
+    { 0x0004, { 0x00, 0x07 } },
+//  { 0x000E, { 0x01, 0x00 } },
+    { 0x0010, { 0xB0, 0xB0 } },
+    { 0x0011, { 0x00, 0xB0 } },
 #else
 	{ 0x0000, { 0x00, 0x07 } },
 	{ 0x0001, { 0x00, 0x20 } },
@@ -132,6 +189,12 @@ static struct so340010_register so340010_register_init_table[] = {
 //	{ 0x000E, { 0x01, 0x00 } },
 	{ 0x0010, { 0xA0, 0xA0 } },
 	{ 0x0011, { 0xA0, 0xA0 } },
+#endif
+#if (defined(CONFIG_KEYBOARD_SO340010_LED))
+	{ 0x0022, { 0x00, 0x0f } }, 
+	{ 0x0023, { 0x00, 0x00 } },
+	{ 0x0024, { 0x08, 0x08 } },		/* Brightness value 0 ~ 31*/
+	{ 0x0025, { 0x08, 0x08 } }, 
 #endif
 };
 
@@ -360,6 +423,27 @@ static void so340010_timer_func(unsigned long __dev)
 	mod_timer(&dev->timer, jiffies + msecs_to_jiffies(SO340010_TIMER_INTERVAL));
 }
 
+#if defined(CONFIG_KEYBOARD_SO340010_LED)
+static void so340010_led_work_func(struct work_struct *work)
+{
+	int ret;
+	struct so340010_kbd_dev *dev;
+	logd(TAG "so340010_led_work_func() IN\n");
+	dev = (struct so340010_kbd_dev *)container_of(work, struct so340010_kbd_dev, led_work);
+	if (jiffies - dev->last_touch > msecs_to_jiffies(4000)) {
+		dev->led_mask = 0;
+		ret = so340010_i2c_write_word(dev, SO340010_REG_GPIO_CTRL, dev->led_mask);
+	} else {
+		ret = so340010_i2c_write_word(dev, SO340010_REG_GPIO_CTRL, dev->led_mask);
+		queue_delayed_work(dev->workqueue, &dev->led_work, msecs_to_jiffies(4000));
+	}
+	if (ret != 0) {
+		logd(TAG "so340010_led_work_func set led state failed\n");
+	}
+	logd(TAG "so340010_led_work_func() OUT\n");
+}
+#endif
+
 static void so340010_work_func(struct work_struct *work)
 {
 	int i, ret;
@@ -378,11 +462,27 @@ static void so340010_work_func(struct work_struct *work)
 	for (i = 0; i < key_num; i++) {
 		if (button_val & key_table[i].key_mask) {
 			dev->pending_keys |= key_table[i].key_mask;
+#if defined (CONFIG_KEYBOARD_SO340010_LED)
+			cancel_delayed_work_sync(&dev->led_work);
+			so340010_i2c_write_word(dev, SO340010_REG_GPIO_CTRL, KEY_ALL);
+			dev->last_touch = jiffies;
+			if (dev->led_mask == 0) {
+				dev->led_mask = KEY_ALL;
+			} else {
+				dev->led_mask = KEY_ALL & (~dev->pending_keys);
+			}
+			queue_delayed_work(dev->workqueue, &dev->led_work, 0);
+#endif
 			input_report_key(dev->input_dev, key_table[i].key_code, 1);
 		} else {
 			if (dev->pending_keys & key_table[i].key_mask) {
 				input_report_key(dev->input_dev, key_table[i].key_code, 0);
 				dev->pending_keys &= ~(key_table[i].key_mask);
+#if defined(CONFIG_KEYBOARD_SO340010_LED)
+				cancel_delayed_work_sync(&dev->led_work);
+				dev->led_mask = KEY_ALL & (~dev->pending_keys);
+				queue_delayed_work(dev->workqueue, &dev->led_work, msecs_to_jiffies(200));
+#endif
 			}
 		}
 	}
@@ -415,11 +515,17 @@ static void so340010_irq_callback(void *args)
 static void so340010_kbd_early_suspend(struct early_suspend *es)
 {
 	struct so340010_kbd_dev *dev;
-
+        int ret;
 	logd(TAG "so340010_kbd_early_suspend() IN\r\n");
 	
 	dev = (struct so340010_kbd_dev *)container_of(es, struct so340010_kbd_dev, early_suspend);
 	NvOdmGpioInterruptMask(dev->irq_handle, NV_TRUE);
+	del_timer_sync(&dev->timer);
+#if (defined(CONFIG_KEYBOARD_SO340010_LED) )
+        dev->led_mask = 0;
+	ret=so340010_i2c_write_word(dev, SO340010_REG_GPIO_CTRL, dev->led_mask);
+	cancel_delayed_work_sync(&dev->led_work);
+#endif
 	cancel_work_sync(&dev->work);
 	so340010_sleep(dev, true);
 	
@@ -436,7 +542,13 @@ static void so340010_kbd_late_resume(struct early_suspend *es)
 	if (so340010_reset(dev)) {
 		logd(TAG "so340010_reset_failed\r\n");
 	}
+	mod_timer(&dev->timer, jiffies + msecs_to_jiffies(SO340010_TIMER_INTERVAL));
 	NvOdmGpioInterruptMask(dev->irq_handle, NV_FALSE);
+#if CONFIG_KEYBOARD_SO340010_LED
+	dev->last_touch = jiffies;
+	dev->led_mask = KEY_ALL;
+	queue_delayed_work(dev->workqueue, &dev->led_work, 0);
+#endif
 }
 #endif
 
@@ -551,7 +663,9 @@ static int so340010_kbd_probe(struct platform_device *pdev)
 		goto failed_add_sysfs;
 	}
 #endif
-
+#if defined (CONFIG_KEYBOARD_SO340010_LED)
+	INIT_DELAYED_WORK(&dev->led_work, so340010_led_work_func);
+#endif
 	init_timer(&dev->timer);
 	dev->timer.function = so340010_timer_func;
 	dev->timer.data = dev;

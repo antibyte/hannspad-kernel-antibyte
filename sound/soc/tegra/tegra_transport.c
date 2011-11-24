@@ -549,6 +549,7 @@ int tegra_audiofx_init(struct tegra_audio_data* tegra_snd_cx)
 		tegra_snd_cx->mi2s1 = tegra_snd_cx->xrt_fxn.MixerCreateObject(
 						tegra_snd_cx->mixer_handle,
 						NvAudioFxI2s1Id);
+		tegra_snd_cx->mi2s1_device_available = NvAudioFxIoDevice_Default;
 
 		tegra_snd_cx->i2s1_play_mix = tegra_snd_cx->xrt_fxn.MixerCreateObject(
 						tegra_snd_cx->mixer_handle,

@@ -90,13 +90,29 @@ extern "C"
 #define AT168_VERSION_BOOTLOADER	0x20
 #define AT168_VERSION_PROTOCOL			0x21
 
+#define AT168_SINTEK_BASELINE_X1_VALUE				0x7d  //125
+#define AT168_SINTEK_BASELINE_X2_VALUE				0x3d  //61
+#define AT168_SINTEK_BASELINE_Y_VALUE				0x4d  //77
+
+#define AT168_SINTEK_CALIBRATERESULT_X1_VALUE				0x7d  //125
+#define AT168_SINTEK_CALIBRATERESULT_X2_VALUE				0x3d  //61
+#define AT168_SINTEK_CALIBRATERESULT_Y_VALUE				0x4d  //77
+
+#define AT168_CANDO_BASELINE_COMMAND				0xc7
+#define AT168_CANDO_CALIBRATERESULT_COMMAND		0xc8
+
 #define AT168_SPECOP				0x37
+
+#define AT168_INTERNAL_ENABLE				0xc2 //194
 
 /* AT168 registers Init value*/
 #define AT168_POWER_MODE_VALUE	0xa4
 #define AT168_INIT_MODE_VALUE		0x0a
 #define AT168_SPECOP_DEFAULT_VALUE		0x00
 #define AT168_SPECOP_CALIBRATION_VALUE		0x03
+
+#define AT168_INTERNAL_ENABLE_VALUE		0x01
+#define AT168_INTERNAL_DISABLE_VALUE		0x00
 
 //*********************************************************************************//
 #if defined(__cplusplus)

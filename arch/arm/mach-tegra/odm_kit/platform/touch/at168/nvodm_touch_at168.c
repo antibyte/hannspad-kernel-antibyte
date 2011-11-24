@@ -49,13 +49,24 @@
 #include <linux/fs.h> 
 #include <asm/uaccess.h> 
 #include <linux/mm.h> 
+
+#if (defined(CONFIG_7265C_V20)||defined(CONFIG_7323C_V21)||defined(CONFIG_7332C_V21)||defined(CONFIG_7113C_V10)||defined(CONFIG_7705C_V10))
 #define AT168_I2C_SPEED_KHZ                          200//400
+#elif (defined(CONFIG_7373C_V20))
+#define AT168_I2C_SPEED_KHZ                          200//400
+#else
+#define AT168_I2C_SPEED_KHZ                          100//400
+#endif
+
 #define AT168_I2C_TIMEOUT                            2000//500
 #define AT168_DEBOUNCE_TIME_MS 		0
 #define AT168_TOUCH_DEVICE_GUID 			NV_ODM_GUID('a','t','e','1','6','8','t','s')
 
 #define AT168_WRITE(dev, reg, byte) AT168_WriteRegister(dev, reg, byte)
 #define AT168_READ(dev, reg, buffer, len) AT168_ReadRegisterSafe(dev, reg, buffer, len)
+
+#define  SLEEP_MODE_COMMAND                        0x38
+#define  SLEEP_MODE_PARAMETER                      0x55
 
 typedef struct AT168_TouchDeviceRec
 {
@@ -66,8 +77,8 @@ typedef struct AT168_TouchDeviceRec
 	NvOdmServicesPmuHandle hPmu;
 	NvOdmGpioPinHandle hPinReset;
 	NvOdmGpioPinHandle hPinInterrupt;
-#if 1 //defined(CONFIG_7373C_V20)
-        NvOdmGpioPinHandle hPinPower;
+#if (defined(CONFIG_7373C_V20)||defined(CONFIG_7564C_V10))
+	NvOdmGpioPinHandle hPinPower;
 #endif
 	NvOdmServicesGpioIntrHandle hGpioIntr;
 	NvOdmOsSemaphoreHandle hIntSema;
@@ -108,7 +119,11 @@ static NvOdmTouchCapabilities AT168_Capabilities =
 	.YMaxPosition = 600,//AT168_MAX_Y,
 	.Orientation = 0, //0,//NvOdmTouchOrientation_V_FLIP,//NvOdmTouchOrientation_H_FLIP
 	.Version = 0, 
+	.CalibrationData = 0, 
+	.BaselineDate = {0}, 
+	.CalibrateResultDate = {0},
 };
+
 static NvBool AT168_Bootloader_Read (AT168_TouchDevice *hTouch, NvU8* buffer, NvU32 NumBytes)
 {
 	NvOdmI2cStatus Error;
@@ -258,6 +273,7 @@ static void InitOdmTouch (NvOdmTouchDevice* Dev)
 	Dev->Close              = AT168_Close;
 	Dev->GetCapabilities    = AT168_GetCapabilities;
 	Dev->ReadCoordinate     = AT168_ReadCoordinate;
+	Dev->ReadInitData       = AT168_ReadInitData;
 	Dev->EnableInterrupt    = AT168_EnableInterrupt;
 	Dev->HandleInterrupt    = AT168_HandleInterrupt;
 	Dev->GetSampleRate      = NULL;
@@ -267,22 +283,1220 @@ static void InitOdmTouch (NvOdmTouchDevice* Dev)
 	Dev->GetCalibrationData = NULL;
 	Dev->SetCalibration = AT168_SetCalibration;
 	Dev->BurnBootloader = AT168_BurnBootloader;
+	Dev->SetBaseline = AT168_SetBaseline;
+	Dev->SetCalibrateResult = AT168_SetCalibrateResult;
 	Dev->OutputDebugMessage = NV_FALSE;
 }
 
 void AT168_SetCalibration(NvOdmTouchDeviceHandle hDevice)
 {
 	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
-	
-	int counts=6;
-	while(counts){	
+	NvU8 k = 0;
 	//set the SPECOP reg and the touchscreen will calibration by itself;
-		if(NV_TRUE==AT168_WRITE(hTouch, AT168_SPECOP, AT168_SPECOP_CALIBRATION_VALUE)) break;
-		counts--;
-		msleep(10);
+RetrySetCalibration:
+	if(!(AT168_WRITE(hTouch, AT168_SPECOP, AT168_SPECOP_CALIBRATION_VALUE)))
+	{
+			if(k < 60){
+				k++;
+				NvOsDebugPrintf("AT168_SetCalibration fail num is (%d) \n", k);
+				msleep(5);
+				goto RetrySetCalibration;
+			}
+			else{
+				NvOsDebugPrintf("AT168_SetCalibration fail \n");
+				AT168_Capabilities.CalibrationData = 2 ;
+			}
 	}
-	NvOsDebugPrintf("AT168_SetCalibration OK .\n");
+	else{
+		NvOsDebugPrintf("AT168_SetCalibration OK \n");
+		AT168_Capabilities.CalibrationData = 1 ;
+	}
+
+	//Copy AT168_Capabilities data to hTouch->Caps
+	NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
 }
+
+void AT168_SetBaselineSintekTango(NvOdmTouchDeviceHandle hDevice)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+	NvOsDebugPrintf("AT168_SetBaselineSintek is Sintek Tango IC \n");
+
+	int i = 0;
+	int j= 0;
+	NvBool isodd = NV_TRUE;
+
+	if(!(AT168_WRITE(hTouch, AT168_INTERNAL_ENABLE, AT168_INTERNAL_DISABLE_VALUE)))
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek  AT168_INTERNAL_DISABLE_VALUE fail \n");
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek  AT168_INTERNAL_DISABLE_VALUE OK \n");
+	}
+
+	msleep(100);
+
+	//Sintek two Tango IC have 37 X line(30 in IC 1 / 7 in IC 2) and 21 Y line;
+	NvU8 BaselineXValue1Temp[60] = {0};
+	NvU8 BaselineXValue2Temp[14] = {0};
+	NvU8 BaselineYValueTemp[42] = {0};
+
+	NvS16 BaselineXValue1[30] = {0};
+	NvS16 BaselineXValue2[7] = {0};
+	NvS16 BaselineYValue[21] = {0};
+
+	//Read X1 baseline data
+	if(!AT168_READ(hTouch, AT168_SINTEK_BASELINE_X1_VALUE, BaselineXValue1Temp, 60))
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek: AT168_SINTEK_BASELINE_X1_VALUE fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek:  AT168_SINTEK_BASELINE_X1_VALUE success .\n");
+
+		#if 0
+		i = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: AT168_SINTEK_BASELINE_X1_VALUE temp [%d] = 0x%x---\n", i, BaselineXValue1Temp[i]);
+			i++;
+
+		}while(i < 60);
+		#endif
+
+		i = 0;
+		j = 0;
+		isodd = NV_TRUE;
+		do
+		{
+			if( NV_TRUE == isodd )
+			{
+				BaselineXValue1[j] =  BaselineXValue1Temp[i];
+				isodd = NV_FALSE;
+			}
+			else
+			{
+				if((BaselineXValue1Temp[i]) & 0x80) 
+				{
+					BaselineXValue1[j] = ((BaselineXValue1Temp[i] << 8) |BaselineXValue1[j]);
+					//NvOsDebugPrintf("AT168_SINTEK_BASELINE_X1_VALUE temp 1 [%d] = %d---\n", j, BaselineXValue1[j]);
+				}
+				else
+				{
+					BaselineXValue1[j] = ((BaselineXValue1Temp[i] << 8) |BaselineXValue1[j]);
+				}
+				//NvOsDebugPrintf("AT168_SINTEK_BASELINE_X1_VALUE[%d] = %d---\n", j, BaselineXValue1[j]);
+				j++;
+				isodd = NV_TRUE;
+			}
+			i++;
+		}while(i < 60);
+		
+		
+	}
+
+	//Read X2 baseline data
+	if(!AT168_READ(hTouch, AT168_SINTEK_BASELINE_X2_VALUE, BaselineXValue2Temp, 14))
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek:  AT168_SINTEK_BASELINE_X2_VALUE fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek:  AT168_SINTEK_BASELINE_X2_VALUE success .\n");
+
+		#if 0
+		i = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: AT168_SINTEK_BASELINE_X2_VALUE[%d] = 0x%x---\n", i, BaselineXValue2Temp[i]);
+			i++;
+
+		}while(i < 14);
+		#endif
+		i = 0;
+		j = 0;
+		isodd = NV_TRUE;
+		do
+		{
+			if( NV_TRUE == isodd )
+			{
+				BaselineXValue2[j] =  BaselineXValue2Temp[i];
+				isodd = NV_FALSE;
+			}
+			else
+			{
+				if((BaselineXValue1Temp[i]) & 0x80) 
+				{
+					BaselineXValue2[j] = ((BaselineXValue2Temp[i] << 8) |BaselineXValue2[j]);
+					//NvOsDebugPrintf("AT168_SINTEK_BASELINE_X2_VALUE temp 1 [%d] = %d---\n", j, BaselineXValue2[j]);
+				}
+				else
+				{
+					BaselineXValue2[j] = ((BaselineXValue2Temp[i] << 8) |BaselineXValue2[j]);
+				}
+				//NvOsDebugPrintf("AT168_SINTEK_BASELINE_X2_VALUE[%d] = %d---\n", j, BaselineXValue2[j]);
+				j++;
+				isodd = NV_TRUE;
+			}
+			i++;
+		}while(i < 14);
+	}
+
+	//Read Y baseline data
+	if(!AT168_READ(hTouch, AT168_SINTEK_BASELINE_Y_VALUE, BaselineYValueTemp, 42))
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek:  AT168_SINTEK_BASELINE_Y_VALUE fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek:  AT168_SINTEK_BASELINE_Y_VALUE success .\n");
+
+		#if 0
+		i = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: AT168_SINTEK_BASELINE_Y_VALUE[%d] = 0x%x---\n", i, BaselineYValueTemp[i]);
+			i++;
+
+		}while(i < 21);
+		#endif
+		i = 0;
+		j = 0;
+		isodd = NV_TRUE;
+		do
+		{
+			if( NV_TRUE == isodd )
+			{
+				BaselineYValue[j] =  BaselineYValueTemp[i];
+				isodd = NV_FALSE;
+			}
+			else
+			{
+				if((BaselineYValueTemp[i]) & 0x80) 
+				{
+					BaselineYValue[j] = ((BaselineYValueTemp[i] << 8) |BaselineYValue[j]);
+					//NvOsDebugPrintf("AT168_SINTEK_BASELINE_Y_VALUE temp 1 [%d] = %d---\n", j, BaselineYValue[j]);
+				}
+				else
+				{
+					BaselineYValue[j] = ((BaselineYValueTemp[i] << 8) |BaselineYValue[j]);
+				}
+				//NvOsDebugPrintf("AT168_SINTEK_BASELINE_Y_VALUE[%d] = %d---\n", j, BaselineYValue[j]);
+				j++;
+				isodd = NV_TRUE;
+			}
+			i++;
+		}while(i < 42);
+	}
+
+	//from 0-29 is X1 value, 30-36 is X2 value, 37-57 is Y value
+	i = 0;
+	do
+	{
+		if((i>=0) && (i <= 29))
+		{
+			AT168_Capabilities.BaselineDate[i] = BaselineXValue1[i];
+		}
+		else if((i>=30) && (i <= 36))
+		{
+			AT168_Capabilities.BaselineDate[i] = BaselineXValue2[i - 30];
+		}
+		else if((i>=37) && (i <= 57))
+		{
+			AT168_Capabilities.BaselineDate[i] = BaselineYValue[i - 37];
+		}
+		i++;
+	}while(i < 58);
+	
+	NvOsDebugPrintf("---Sintek BaselineDate ---\n");
+	NvOsDebugPrintf("BaselineDate X Value is--\n");
+	i = 0;
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.BaselineDate[i]);
+		i++;
+	}while(i < 37);
+	NvOsDebugPrintf("\n");
+
+	i = 37;
+	NvOsDebugPrintf("BaselineDate Y Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.BaselineDate[i]);
+		i++;
+	}while(i < 58);
+	NvOsDebugPrintf("\n");
+	
+}
+
+void AT168_SetBaselineCandoTango(NvOdmTouchDeviceHandle hDevice)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+	NvOsDebugPrintf("AT168_SetBaselineCandoTango is Cando Tango IC \n");
+
+	//Cando two Tango IC have 37 X line(30 in IC 1 / 7 in IC 2) and 21 Y line;
+	//Cando have three buf from touchscreen,
+	//  1  pin assignment;  2  value;   3  sign +/-;
+
+	NvU8 BaselineTemp[128] = {0};
+
+	NvU8 BaselineValueTemp[57] = {0};
+	NvU8 BaselineSignTemp[57] = {0};
+	
+	NvS16 BaselineXValue[37] = {0};
+	NvS16 BaselineYValue[20] = {0};
+
+	NvU8 TP_LoginBaselineCommand[1];
+	TP_LoginBaselineCommand[0] = AT168_CANDO_BASELINE_COMMAND;
+	NvU8 i = 0;
+	NvU8 j = 0;
+	NvU8 k = 0;
+	NvU8 count = 0;
+	NvBool bGetValue  = NV_FALSE;
+	NvBool bGetSign  = NV_FALSE;
+	NvBool bGetValueSign  = NV_FALSE;
+	
+	do{
+CandoTangoRetryWriteBaselineCommand:
+		if(!(AT168_Bootloader_Write(hTouch, TP_LoginBaselineCommand, 1))){
+			if(k < 60){
+				k++;
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango CANDO_BASELINE_COMMAND fail num is (%d) \n", k);
+				msleep(5);
+				goto CandoTangoRetryWriteBaselineCommand;
+			}else{
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango Write CANDO_BASELINE_COMMAND fail \n");
+				return;
+			}
+		}else{
+			NvOsDebugPrintf("AT168_SetBaselineCandoTango Write CANDO_BASELINE_COMMAND OK \n");
+		}
+	
+		msleep(100);
+
+		if(!(AT168_Bootloader_Read(hTouch, BaselineTemp, 128)))
+		{
+			NvOsDebugPrintf("AT168_SetBaselineCandoTango  AT168_Bootloader_Read fail \n");
+		}
+		else
+		{
+			NvOsDebugPrintf("AT168_SetBaselineCandoTango  AT168_Bootloader_Read OK \n");
+
+			j= 0;
+			#if 0
+			do
+			{
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango: BaselineTemp[%d] = %d---\n", j, BaselineTemp[j]);
+				j++;
+
+			}while(j < 128);
+			#endif
+			j= 0;
+
+			//get the data from BaselineTemp to output buf
+			//--------------------------------------------------------//
+			#if 1
+			if( 0xD1 == BaselineTemp[1] ){
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango  BaselineTemp[1] is 0XD1 \n");
+			}else if( 0xD2 == BaselineTemp[1] ){
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango  BaselineTemp[1] is 0XD2 \n");
+				do
+				{
+					BaselineValueTemp[i] = BaselineTemp[i+3];
+					i++;
+				}while(i < 37);
+
+				do
+				{
+					BaselineValueTemp[i] = BaselineTemp[i+4];
+					i++;
+				}while(i < 57);
+
+				#if 0
+				do
+				{
+					NvOsDebugPrintf("AT168_SetBaselineCandoTango: BaselineValueTemp[%d] = %d---\n", j, BaselineValueTemp[j]);
+					j++;
+
+				}while(j < 57);
+				#endif
+				j= 0;
+				
+				bGetValue = NV_TRUE;
+			}else if( 0xD3 == BaselineTemp[1] ){
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango  BaselineTemp[1] is 0XD3 \n");
+				do
+				{
+					BaselineSignTemp[i] = BaselineTemp[i+3];
+					i++;
+				}while(i < 37);
+
+				do
+				{
+					BaselineSignTemp[i] = BaselineTemp[i+4];
+					i++;
+				}while(i < 57);
+
+				#if 0
+				do
+				{
+					NvOsDebugPrintf("AT168_SetBaselineCandoTango: BaselineSignTemp[%d] = %d---\n", j, BaselineSignTemp[j]);
+					j++;
+
+				}while(j < 57);
+				#endif
+				j= 0;
+				
+				bGetSign = NV_TRUE;
+			}else{
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango  BaselineTemp[1] error data \n");
+			}
+			
+			
+			if((NV_TRUE == bGetValue) && (NV_TRUE == bGetSign)){
+				NvOsDebugPrintf("AT168_SetBaselineCandoTango already get value and sign from TS \n");
+				i = 0;
+				do
+				{
+					if((BaselineSignTemp[i] == 0) ||(BaselineValueTemp[i] == 0)){
+						BaselineXValue[i] = BaselineValueTemp[i];
+					}else{
+						BaselineXValue[i] = ((32768 - BaselineValueTemp[i]) | 0x8000);
+						//BaselineXValue[i] = BaselineValueTemp[i];
+					}
+					i++;
+				}while(i < 37);
+				i = 0;
+				do
+				{
+					if((BaselineSignTemp[i + 37] == 0) ||(BaselineValueTemp[i + 37] == 0)){
+						BaselineYValue[i] = BaselineValueTemp[i + 37];
+					}else{
+						BaselineYValue[i] = ((32768 - BaselineValueTemp[i + 37]) | 0x8000);
+						//BaselineYValue[i] = BaselineValueTemp[i + 37];
+					}
+					i++;
+				}while(i < 20);
+
+				j= 0;
+				do
+				{
+					NvOsDebugPrintf("AT168_SetBaselineCandoTango: BaselineXValue[%d] = %d---\n", j, BaselineXValue[j]);
+					j++;
+
+				}while(j < 37);
+				
+				j= 0;
+				do
+				{
+					NvOsDebugPrintf("AT168_SetBaselineCandoTango: BaselineYValue[%d] = %d---\n", j, BaselineYValue[j]);
+					j++;
+
+				}while(j < 20);
+				
+				bGetValueSign = NV_TRUE;
+				count = 2;
+				
+			}
+			i = 0;
+			#endif
+			count ++;
+			//--------------------------------------------------------//
+		}
+	}
+	//while(NV_FALSE == bGetValueSign );
+	while(count < 3 );
+
+	// Reset TP
+	NvU8 nLoop = 0;
+	NvU8 ResetTPCommand[1];
+	ResetTPCommand[0] = 0xc5;
+
+	nLoop = 0;
+	while(nLoop<5)
+	{
+		if(!(AT168_Bootloader_Write(hTouch, ResetTPCommand, 1)))
+		{
+			NvOsDebugPrintf("AT168_SetBaselineCandoTango  AT168_Bootloader_Write  ResetTPCommand fail nLoop is %d \n", nLoop);
+			nLoop ++;
+			msleep(3);
+		}
+		else
+		{
+			NvOsDebugPrintf("AT168_SetBaselineCandoTango  AT168_Bootloader_Write  ResetTPCommand success \n");
+			break;
+		}
+	}
+
+
+	i = 0;
+	do
+	{
+		AT168_Capabilities.BaselineDate[i] = BaselineXValue[i];
+		i++;
+	}while(i < 37);
+	i = 37;
+	do
+	{
+		AT168_Capabilities.BaselineDate[i] = BaselineYValue[i - 37];
+		i++;
+	}while(i < 57);
+	
+	i = 0;
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.BaselineDate[i]);
+		i++;
+	}while(i < 37);
+	NvOsDebugPrintf("\n");
+
+	i = 37;
+	NvOsDebugPrintf("BaselineDate Y Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.BaselineDate[i]);
+		i++;
+	}while(i < 57);
+
+	
+}
+
+void   AT168_SetBaselineUniDisplayTango(NvOdmTouchDeviceHandle hDevice)
+{
+      
+      AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+
+	NvU8  BaselineXValue[40] = {0};
+	NvU8  BaselineYValue[30] = {0};
+
+	NvU8  RawlineXValue[40] = {0};
+	NvU8  RawlineYValue[30] = {0};
+
+	NvU8 i = 0;
+	
+	NvU8 TP_LoginBaselineCommand[2];
+	
+       TP_LoginBaselineCommand[0] = 0xf4;
+       TP_LoginBaselineCommand[1] = 0x51;
+
+       if(!(AT168_Bootloader_Write(hTouch, TP_LoginBaselineCommand, 2)))
+       {
+            NvOsDebugPrintf("UniDisplayBootloader Change to TP mode  fail \n");
+	     return;
+       }
+       else
+       {
+	     NvOsDebugPrintf("UniDisplayBootloader Change to TP mode  sucess   AT168_Write 0xf4 0x51 \n");    
+       }
+
+
+	TP_LoginBaselineCommand[0] = 0xf2;       //baseline command
+        TP_LoginBaselineCommand[1] = 0x02;
+
+	if(!(AT168_Bootloader_Write(hTouch, TP_LoginBaselineCommand, 2)))
+       {
+            NvOsDebugPrintf(" UniDisplayBootloader  set  read  base  line  data command  fail \n");
+	     return ;
+       }
+	else
+	{
+	     NvOsDebugPrintf("UniDisplayBootloader  set  read  base  line  data command  sucess \n");    
+	} 
+
+       msleep(100);
+	   
+       if(!AT168_READ(hTouch, 0xe0,  BaselineXValue, 40))
+	{
+		NvOsDebugPrintf(" READ_BASELINE_X_VALUE fail .\n");
+		return ;
+       }
+	else
+	{
+             i = 0 ;
+             NvOsDebugPrintf("Read  UniDisplay   base  line  X  chanel data ,all of 40 \n");  
+	     do
+	      {
+		     NvOsDebugPrintf(" %d ",  BaselineXValue[i]);
+		      i++;
+	      }while(i < 40);
+	      NvOsDebugPrintf("\n");
+	  
+	}
+       msleep(100);
+
+        if(!AT168_READ(hTouch, 0xe1,  BaselineYValue, 30))
+	{
+		NvOsDebugPrintf(" READ_BASELINE_Y_VALUE fail .\n");
+		return ;
+       }
+	else
+	{
+             i = 0 ;
+             NvOsDebugPrintf("Read  UniDisplay   base  line  y  chanel data , all of 30\n");  
+	     do
+	      {
+		     NvOsDebugPrintf(" %d ",   BaselineYValue[i]);
+		      i++;
+	      }while(i < 30);
+	      NvOsDebugPrintf("\n");
+	  
+	}
+
+
+
+     	TP_LoginBaselineCommand[0] = 0xf2; 
+        TP_LoginBaselineCommand[1] = 0x01;        //raw  data  
+
+	
+	 if(!(AT168_Bootloader_Write(hTouch, TP_LoginBaselineCommand, 2)))
+       {
+            NvOsDebugPrintf("UniDisplayBootloader  set  read raw  line  data command    fail \n");
+	     return ;
+       }
+	else
+	{
+	     NvOsDebugPrintf("UniDisplayBootloader  set  read raw  line  data command  sucess \n");    
+	} 
+
+      msleep(100);
+	
+
+        if(!AT168_READ(hTouch, 0xe0,  RawlineXValue, 40))
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek: AT168_UniDisplay_RAWDATA_X_VALUE fail .\n");
+		return ;
+       }
+	else
+	{
+	      NvOsDebugPrintf("AT168_SetBaselineUniDisplay: AT168_UniDisplay_RAWDATA_X_VALUE sucess .\n");
+             i = 0 ;
+             NvOsDebugPrintf("Read  UniDisplay   raw  line  X  chanel data ,all of 40 \n");  
+	     do
+	      {
+		     NvOsDebugPrintf(" %d ",  RawlineXValue[i]);
+		      i++;
+	      }while(i < 40);
+	      NvOsDebugPrintf("\n");
+	  
+	}
+	
+       msleep(100);
+
+        if(!AT168_READ(hTouch, 0xe1,  RawlineYValue, 30))
+	{
+		NvOsDebugPrintf("AT168_SetBaselineSintek: AT168_UniDisplay_RAWDATA_Y_VALUE fail .\n");
+		return ;
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_SetBaselineUniDisplay: AT168_UniDisplay_RAWDATA_Y_VALUE sucess .\n");
+	     NvOsDebugPrintf("Read  UniDisplay  raw  line  y  chanel data , all of 30\n");
+             i = 0 ;
+	     do
+	      {
+		     NvOsDebugPrintf(" %d ",  RawlineYValue[i]);
+		      i++;
+	      }while(i < 30);
+	      NvOsDebugPrintf("\n");	  
+	}
+
+       TP_LoginBaselineCommand[0] = 0xf2;
+       TP_LoginBaselineCommand[1] = 0x00;
+       if(!(AT168_Bootloader_Write(hTouch, TP_LoginBaselineCommand, 2)))
+       {
+            NvOsDebugPrintf(" set  back   to  AP  mode  step1  failed \n");
+	     return ;
+       }
+	else
+	{
+	     NvOsDebugPrintf(" set  back   to  AP  mode  step1  sucess  \n");    
+	} 
+  
+       TP_LoginBaselineCommand[0] = 0xf4;
+       TP_LoginBaselineCommand[1] = 0x50;
+	 if(!(AT168_Bootloader_Write(hTouch, TP_LoginBaselineCommand, 2)))
+       {
+            NvOsDebugPrintf("set  back   to  AP  mode  step2  failed \n \n");
+	     return ;
+       }
+	else
+	{
+	     NvOsDebugPrintf("set  back   to  AP  mode  step2  sucess \n");    
+	} 	
+
+	i = 0;
+	do
+	{ 
+		AT168_Capabilities.BaselineDate[i] = BaselineXValue[i+2];   // frist 2 data  not  use
+		AT168_Capabilities.CalibrateResultDate[i]  =  RawlineXValue[i+2] - BaselineXValue[i+2] ;
+		i++;
+	}while(i < 38);
+	
+	i = 0;
+	do
+	{
+		AT168_Capabilities.BaselineDate[i+38] = BaselineYValue[i+2];
+		AT168_Capabilities.CalibrateResultDate[i+38]  =  RawlineYValue[i+2] -BaselineYValue[i+2] ;
+		i++;
+	}while(i < 20);
+	
+	i = 0;
+	NvOsDebugPrintf("BaselineDate X  Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.BaselineDate[i]);
+		i++;
+	}while(i < 38);
+	NvOsDebugPrintf("\n");
+
+	i = 38;
+	NvOsDebugPrintf("BaselineDate Y Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.BaselineDate[i]);
+		i++;
+	}while(i < 58);
+        NvOsDebugPrintf("\n");
+
+        i = 0;
+	NvOsDebugPrintf("CalibrateResultDate  X  Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.CalibrateResultDate[i]);
+		i++;
+	}while(i < 38);
+	NvOsDebugPrintf("\n");
+
+	i = 38;
+	NvOsDebugPrintf("CalibrateResultDate  Y  Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.CalibrateResultDate[i]);
+		i++;
+	}while(i < 58);  
+	NvOsDebugPrintf("\n");
+	
+}
+
+void AT168_SetBaseline(NvOdmTouchDeviceHandle hDevice)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+	
+        if((AT168_Capabilities.Version & 0x0f000000) == 0x03000000 ) 
+        {
+              NvOsDebugPrintf("AT168_Setbaseline --   UniDisplay TS \n");   
+	      AT168_SetBaselineUniDisplayTango(hDevice);
+              NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+              return ;
+
+        }
+
+       if((AT168_Capabilities.Version & 0x0f000000) == 0x05000000 ) 
+        {
+              NvOsDebugPrintf("AT168_Setbaseline --  new  Sintex  TS \n");   
+	      AT168_SetBaselineSintekTango(hDevice);
+              NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+	      return ;
+        }
+
+	if(AT168_Capabilities.Version & 0x02000000){
+		AT168_SetBaselineSintekTango(hDevice);
+	}else if((AT168_Capabilities.Version & 0x01000000) || (AT168_Capabilities.Version & 0x04000000)){
+		AT168_SetBaselineCandoTango(hDevice);
+	}else{
+		NvOsDebugPrintf("waring : AT168_SetBaseline not IC have been found \n");
+	}
+
+	//Copy AT168_Capabilities data to hTouch->Caps
+	NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+}
+
+void AT168_SetCalibrateResultSintekTango(NvOdmTouchDeviceHandle hDevice)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+
+	NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango is Sintek Tango IC \n");
+
+	int i = 0;
+	int j = 0;
+	NvBool isodd = NV_TRUE;
+
+	if(!(AT168_WRITE(hTouch, AT168_INTERNAL_ENABLE, AT168_INTERNAL_ENABLE_VALUE)))
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango  AT168_INTERNAL_ENABLE_VALUE fail \n");
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango  AT168_INTERNAL_ENABLE_VALUE OK \n");
+	}
+
+	msleep(100);
+
+	//Sintek two Tango IC have 37 X line(30 in IC 1 / 7 in IC 2) and 21 Y line;
+	NvU8 CalibrateResultXValue1Temp[60] = {0};
+	NvU8 CalibrateResultXValue2Temp[14] = {0};
+	NvU8 CalibrateResultYValueTemp[42] = {0};
+
+	NvS16 CalibrateResultXValue1[30] = {0};
+	NvS16 CalibrateResultXValue2[7] = {0};
+	NvS16 CalibrateResultYValue[21] = {0};
+
+	//Read X1 baseline data
+	if(!AT168_READ(hTouch, AT168_SINTEK_CALIBRATERESULT_X1_VALUE, CalibrateResultXValue1Temp, 60))
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango:  AT168_Open AT168_SINTEK_CALIBRATERESULT_X1_VALUE fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango:  AT168_Open AT168_SINTEK_CALIBRATERESULT_X1_VALUE success .\n");
+
+		#if 0
+		i = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: AT168_SINTEK_BASELINE_X1_VALUE temp [%d] = 0x%x---\n", i, BaselineXValue1Temp[i]);
+			i++;
+
+		}while(i < 60);
+		#endif
+
+		i = 0;
+		j = 0;
+		isodd = NV_TRUE;
+		do
+		{
+			if( NV_TRUE == isodd )
+			{
+				CalibrateResultXValue1[j] =  CalibrateResultXValue1Temp[i];
+				isodd = NV_FALSE;
+			}
+			else
+			{
+				if((CalibrateResultXValue1Temp[i]) & 0x80) 
+				{
+					CalibrateResultXValue1[j] = ((CalibrateResultXValue1Temp[i] << 8) |CalibrateResultXValue1[j]);
+					//NvOsDebugPrintf("AT168_SINTEK_BASELINE_X1_VALUE temp 1 [%d] = %d---\n", j, BaselineXValue1[j]);
+				}
+				else
+				{
+					CalibrateResultXValue1[j] = ((CalibrateResultXValue1Temp[i] << 8) |CalibrateResultXValue1[j]);
+				}
+				//NvOsDebugPrintf("AT168_SINTEK_CALIBRATERESULT_X1_VALUE[%d] = %d---\n", j, CalibrateResultXValue1[j]);
+				j++;
+				isodd = NV_TRUE;
+			}
+			i++;
+		}while(i < 60);
+		
+		
+	}
+
+	//Read X2 baseline data
+	if(!AT168_READ(hTouch, AT168_SINTEK_CALIBRATERESULT_X2_VALUE, CalibrateResultXValue2Temp, 14))
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango:  AT168_Open AT168_SINTEK_CALIBRATERESULT_X2_VALUE fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango:  AT168_Open AT168_SINTEK_CALIBRATERESULT_X2_VALUE success .\n");
+
+		#if 0
+		i = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: AT168_SINTEK_BASELINE_X2_VALUE[%d] = 0x%x---\n", i, BaselineXValue2Temp[i]);
+			i++;
+
+		}while(i < 14);
+		#endif
+		i = 0;
+		j = 0;
+		isodd = NV_TRUE;
+		do
+		{
+			if( NV_TRUE == isodd )
+			{
+				CalibrateResultXValue2[j] =  CalibrateResultXValue2Temp[i];
+				isodd = NV_FALSE;
+			}
+			else
+			{
+				if((CalibrateResultXValue2Temp[i]) & 0x80) 
+				{
+					CalibrateResultXValue2[j] = ((CalibrateResultXValue2Temp[i] << 8) |CalibrateResultXValue2[j]);
+					//NvOsDebugPrintf("AT168_SINTEK_BASELINE_X2_VALUE temp 1 [%d] = %d---\n", j, BaselineXValue2[j]);
+				}
+				else
+				{
+					CalibrateResultXValue2[j] = ((CalibrateResultXValue2Temp[i] << 8) |CalibrateResultXValue2[j]);
+				}
+				//NvOsDebugPrintf("AT168_SINTEK_CALIBRATERESULT_X2_VALUE[%d] = %d---\n", j, CalibrateResultXValue2[j]);
+				j++;
+				isodd = NV_TRUE;
+			}
+			i++;
+		}while(i < 14);
+	}
+
+	//Read Y baseline data
+	if(!AT168_READ(hTouch, AT168_SINTEK_CALIBRATERESULT_Y_VALUE, CalibrateResultYValueTemp, 42))
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango:  AT168_Open AT168_SINTEK_CALIBRATERESULT_Y_VALUE fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		NvOsDebugPrintf("AT168_SetCalibrateResultSintekTango:  AT168_Open AT168_SINTEK_CALIBRATERESULT_Y_VALUE success .\n");
+
+		#if 0
+		i = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: AT168_SINTEK_BASELINE_Y_VALUE[%d] = 0x%x---\n", i, BaselineYValueTemp[i]);
+			i++;
+
+		}while(i < 21);
+		#endif
+		i = 0;
+		j = 0;
+		isodd = NV_TRUE;
+		do
+		{
+			if( NV_TRUE == isodd )
+			{
+				CalibrateResultYValue[j] =  CalibrateResultYValueTemp[i];
+				isodd = NV_FALSE;
+			}
+			else
+			{
+				if((CalibrateResultYValueTemp[i]) & 0x80) 
+				{
+					CalibrateResultYValue[j] = ((CalibrateResultYValueTemp[i] << 8) |CalibrateResultYValue[j]);
+					//NvOsDebugPrintf("AT168_SINTEK_BASELINE_Y_VALUE temp 1 [%d] = %d---\n", j, BaselineYValue[j]);
+				}
+				else
+				{
+					CalibrateResultYValue[j] = ((CalibrateResultYValueTemp[i] << 8) |CalibrateResultYValue[j]);
+				}
+				//NvOsDebugPrintf("AT168_SINTEK_CALIBRATERESULT_Y_VALUE[%d] = %d---\n", j, CalibrateResultYValue[j]);
+				j++;
+				isodd = NV_TRUE;
+			}
+			i++;
+		}while(i < 42);
+	}
+
+	//from 0-29 is X1 value, 30-36 is X2 value, 37-57 is Y value
+	i = 0;
+	do
+	{
+		if((i>=0) && (i <= 29))
+		{
+			AT168_Capabilities.CalibrateResultDate[i] = CalibrateResultXValue1[i];
+		}
+		else if((i>=30) && (i <= 36))
+		{
+			AT168_Capabilities.CalibrateResultDate[i] = CalibrateResultXValue2[i - 30];
+		}
+		else if((i>=37) && (i <= 57))
+		{
+			AT168_Capabilities.CalibrateResultDate[i] = CalibrateResultYValue[i - 37];
+		}
+		i++;
+	}while(i < 58);
+	
+	NvOsDebugPrintf("--- CalibrateResultDate ---\n");
+	NvOsDebugPrintf("CalibrateResultDate X Value is--\n");
+	i = 0;
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.CalibrateResultDate[i]);
+		i++;
+	}while(i < 37);
+	NvOsDebugPrintf("\n");
+
+	i = 37;
+	NvOsDebugPrintf("CalibrateResultDate Y Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.CalibrateResultDate[i]);
+		i++;
+	}while(i < 58);
+	NvOsDebugPrintf("\n");
+	
+}
+
+void AT168_SetCalibrateResultCandoTango(NvOdmTouchDeviceHandle hDevice)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+	NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango is Cando Tango IC \n");
+
+	//Cando two Tango IC have 37 X line(30 in IC 1 / 7 in IC 2) and 21 Y line;
+	//Cando have three buf from touchscreen,
+	//  1  pin assignment;  2  value;   3  sign +/-;
+
+	NvU8 CalibrateResultTemp[128] = {0};
+
+	NvU8 CalibrateResultValueTemp[57] = {0};
+	NvU8 CalibrateResultSignTemp[57] = {0};
+	
+	NvS16 CalibrateResultXValue[37] = {0};
+	NvS16 CalibrateResultYValue[20] = {0};
+
+	NvU8 TP_LoginCalibrateResultCommand[1];
+	TP_LoginCalibrateResultCommand[0] = AT168_CANDO_CALIBRATERESULT_COMMAND;
+	NvU8 i = 0;
+	NvU8 j = 0;
+	NvU8 k = 0;
+	NvU8 count = 0;
+	NvBool bGetValue  = NV_FALSE;
+	NvBool bGetSign  = NV_FALSE;
+	NvBool bGetValueSign  = NV_FALSE;
+	
+	do{
+CandoTangoRetryWriteCalibrateResultCommand:
+		if(!(AT168_Bootloader_Write(hTouch, TP_LoginCalibrateResultCommand, 1))){
+			if(k < 60){
+				k++;
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango CANDO_CALIBRATERESULT_COMMAND fail num is (%d) \n", k);
+				msleep(5);
+				goto CandoTangoRetryWriteCalibrateResultCommand;
+			}else{
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango Write CANDO_CALIBRATERESULT_COMMAND fail \n");
+				return;
+			}
+		}else{
+			NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango Write CANDO_CALIBRATERESULT_COMMAND OK \n");
+		}
+	
+		msleep(100);
+
+		if(!(AT168_Bootloader_Read(hTouch, CalibrateResultTemp, 128)))
+		{
+			NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  AT168_Bootloader_Read fail \n");
+		}
+		else
+		{
+			NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  AT168_Bootloader_Read OK \n");
+
+			j= 0;
+			#if 0
+			do
+			{
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango: CalibrateResultTemp[%d] = %d---\n", j, CalibrateResultTemp[j]);
+				j++;
+
+			}while(j < 128);
+			#endif
+			j= 0;
+
+			//get the data from CalibrateResultTemp to output buf
+			//--------------------------------------------------------//
+			#if 1
+			if( 0xD1 == CalibrateResultTemp[1] ){
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  CalibrateResultTemp[1] is 0XD1 \n");
+			}else if( 0xD2 == CalibrateResultTemp[1] ){
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  CalibrateResultTemp[1] is 0XD2 \n");
+				do
+				{
+					CalibrateResultValueTemp[i] = CalibrateResultTemp[i+3];
+					i++;
+				}while(i < 37);
+
+				do
+				{
+					CalibrateResultValueTemp[i] = CalibrateResultTemp[i+4];
+					i++;
+				}while(i < 57);
+
+				#if 0
+				do
+				{
+					NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango: CalibrateResultValueTemp[%d] = %d---\n", j, CalibrateResultValueTemp[j]);
+					j++;
+
+				}while(j < 57);
+				#endif
+				j= 0;
+				
+				bGetValue = NV_TRUE;
+			}else if( 0xD3 == CalibrateResultTemp[1] ){
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  CalibrateResultTemp[1] is 0XD3 \n");
+				do
+				{
+					CalibrateResultSignTemp[i] = CalibrateResultTemp[i+3];
+					i++;
+				}while(i < 37);
+
+				do
+				{
+					CalibrateResultSignTemp[i] = CalibrateResultTemp[i+4];
+					i++;
+				}while(i < 57);
+
+				#if 0
+				do
+				{
+					NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango: CalibrateResultSignTemp[%d] = %d---\n", j, CalibrateResultSignTemp[j]);
+					j++;
+
+				}while(j < 57);
+				#endif
+				j= 0;
+				
+				bGetSign = NV_TRUE;
+			}else{
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  CalibrateResultTemp[1] error data \n");
+			}
+			
+			
+			if((NV_TRUE == bGetValue) && (NV_TRUE == bGetSign)){
+				NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango already get value and sign from TS \n");
+				i = 0;
+				do
+				{
+					if((CalibrateResultSignTemp[i] == 0) ||(CalibrateResultValueTemp[i] == 0)){
+						CalibrateResultXValue[i] = CalibrateResultValueTemp[i];
+					}else{
+						CalibrateResultXValue[i] = ((32768 - CalibrateResultValueTemp[i]) | 0x8000);
+						//CalibrateResultXValue[i] = CalibrateResultValueTemp[i];
+					}
+					i++;
+				}while(i < 37);
+				i = 0;
+				do
+				{
+					if((CalibrateResultSignTemp[i + 37] == 0) ||(CalibrateResultValueTemp[i + 37] == 0)){
+						CalibrateResultYValue[i] = CalibrateResultValueTemp[i + 37];
+					}else{
+						CalibrateResultYValue[i] = ((32768 - CalibrateResultValueTemp[i + 37]) | 0x8000);
+						//CalibrateResultYValue[i] = CalibrateResultValueTemp[i + 37];
+					}
+					i++;
+				}while(i < 20);
+
+				j= 0;
+				do
+				{
+					NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango: CalibrateResultXValue[%d] = %d---\n", j, CalibrateResultXValue[j]);
+					j++;
+
+				}while(j < 37);
+				
+				j= 0;
+				do
+				{
+					NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango: CalibrateResultYValue[%d] = %d---\n", j, CalibrateResultYValue[j]);
+					j++;
+
+				}while(j < 20);
+				
+				bGetValueSign = NV_TRUE;
+				count = 2;
+				
+			}
+			i = 0;
+			#endif
+			count ++;
+			//--------------------------------------------------------//
+		}
+	}
+	//while(NV_FALSE == bGetValueSign );
+	while(count < 3 );
+
+	// Reset TP
+	NvU8 nLoop = 0;
+	NvU8 ResetTPCommand[1];
+	ResetTPCommand[0] = 0xc5;
+
+	nLoop = 0;
+	while(nLoop<5)
+	{
+		if(!(AT168_Bootloader_Write(hTouch, ResetTPCommand, 1)))
+		{
+			NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  AT168_Bootloader_Write  ResetTPCommand fail nLoop is %d \n", nLoop);
+			nLoop ++;
+			msleep(3);
+		}
+		else
+		{
+			NvOsDebugPrintf("AT168_SetCalibrateResultCandoTango  AT168_Bootloader_Write  ResetTPCommand success \n");
+			break;
+		}
+	}
+
+	NvOsDebugPrintf("--- CalibrateResultDate ---\n");
+	NvOsDebugPrintf("CalibrateResultDate X Value is--\n");
+	i = 0;
+	do
+	{
+		AT168_Capabilities.CalibrateResultDate[i] = CalibrateResultXValue[i];
+		i++;
+	}while(i < 37);
+	i = 37;
+	do
+	{
+		AT168_Capabilities.CalibrateResultDate[i] = CalibrateResultYValue[i - 37];
+		i++;
+	}while(i < 57);
+	
+	i = 0;
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.CalibrateResultDate[i]);
+		i++;
+	}while(i < 37);
+	NvOsDebugPrintf("\n");
+
+	i = 37;
+	NvOsDebugPrintf("CalibrateResultDate Y Value is--\n");
+	do
+	{
+		NvOsDebugPrintf(" %d ", AT168_Capabilities.CalibrateResultDate[i]);
+		i++;
+	}while(i < 57);
+	NvOsDebugPrintf("\n");
+	
+}
+
+void AT168_SetCalibrateResult(NvOdmTouchDeviceHandle hDevice)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+
+        if((AT168_Capabilities.Version & 0x0f000000) == 0x03000000 ) 
+        {
+              NvOsDebugPrintf("AT168_SetCalibrateResult --   UniDisplay TS \n");   
+	      AT168_SetBaselineUniDisplayTango(hDevice);
+              NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+              return ;
+
+        }
+
+       if((AT168_Capabilities.Version & 0x0f000000) == 0x05000000 ) 
+        {
+              NvOsDebugPrintf("AT168_SetCalibrateResult --   Sintek new panel TS \n");   
+	      AT168_SetCalibrateResultSintekTango(hDevice);
+              NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+	      return ;
+        }
+
+	if(AT168_Capabilities.Version & 0x02000000){
+		AT168_SetCalibrateResultSintekTango(hDevice);
+	}else if((AT168_Capabilities.Version & 0x01000000) || (AT168_Capabilities.Version & 0x04000000)){
+		AT168_SetCalibrateResultCandoTango(hDevice);
+	}else{
+		NvOsDebugPrintf("waring : AT168_SetCalibrateResult not IC have been found \n");
+	}
+
+	//Copy AT168_Capabilities data to hTouch->Caps
+	NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+}
+
 NvBool AT168_BurnSintexBootloader(NvOdmTouchDeviceHandle hDevice)
 {
 	NvOsDebugPrintf("AT168_BurnSintexBootloader begin \n");
@@ -291,27 +1505,20 @@ NvBool AT168_BurnSintexBootloader(NvOdmTouchDeviceHandle hDevice)
 	NvU8 ResetNum = 0;
 	NvU8 status[4];
 
-	//Second step : read the bootloader source file
-	const char *filename = "/data/SintekBootloader";
-	const char *filename1 = "/sdcard/SintekBootloader";
-	const char *filename2 = "/sdcard1/SintekBootloader";
-	const char *filename3 = "/sdcard2/SintekBootloader";
-	const char *filename4 = "/sdcard3/SintekBootloader";
-	const char *filename5 = "/sdcard/sdcard/SintekBootloader";
-	const char *filename6 = "/sdcard/sdcard1/SintekBootloader";
-	const char *filename7 = "/sdcard/sdcard2/SintekBootloader";
-	const char *filename8 = "/sdcard/sdcard3/SintekBootloader";
+	const char *filename_path[10] = 
+  		{"/data/SintekBootloader",
+  		"/mnt/sdcard/SintekBootloader",
+  		"/mnt/sdcard1/SintekBootloader",
+  		"/mnt/sdcard2/SintekBootloader",
+  		"/mnt/sdcard/sdcard1/SintekBootloader",
+  		"/mnt/sdcard/sdcard2/SintekBootloaderi",
+  		"/mnt/sdcard/sdcard3/SintekBootloader",
+  		"/mnt/sdcard/udisk1/SintekBootloader",
+  		"/mnt/sdcard/udisk2/SintekBootloader",
+  		"/mnt/usbdisk/SintekBootloader"
+  		};
 
-	struct file *filp; 
-	struct file *filp1;
-	struct file *filp2;
-	struct file *filp3;
-	struct file *filp4;
-	struct file *filp5;
-	struct file *filp6;
-	struct file *filp7;
-	struct file *filp8;
-
+	struct file *filp;
 	struct inode *inode; 
 	mm_segment_t fs; 
 	off_t fsize; 
@@ -326,21 +1533,24 @@ NvBool AT168_BurnSintexBootloader(NvOdmTouchDeviceHandle hDevice)
 	NvU32 PinStateValue;
 	NvU8 crc_value[1];
 	
-	printk("start download %s\n", filename); 
+	printk("start download SintekBootloader \n"); 
 
 	fs=get_fs(); 
 	set_fs(KERNEL_DS); 
 	
-	filp=filp_open(filename,O_RDONLY|O_LARGEFILE,0); 	//data
-	if(IS_ERR(filp))	
+	if((IS_ERR(filp = filp_open(filename_path[0],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[1],O_RDONLY|O_LARGEFILE,0))) 
+		&& (IS_ERR(filp = filp_open(filename_path[2],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[3],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[4],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[5],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[6],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[7],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[8],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[9],O_RDONLY|O_LARGEFILE,0)))
+	)
 	{
-		printk("can not open file, please check the file in data !\r\n"); 
-		//filp_close(filp,NULL);
-		//return NV_FALSE;
+		printk("can not open file SintekBootloader , please check the file path \r\n");
+		return NV_FALSE;
 	}
 	else
 	{
-		printk("Open file SintekBootloader in data success \r\n");
+		printk("Open file SintekBootloader success \r\n");
 		inode=filp->f_dentry->d_inode; 
 		magic=inode->i_sb->s_magic; 
 		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
@@ -351,195 +1561,8 @@ NvBool AT168_BurnSintexBootloader(NvOdmTouchDeviceHandle hDevice)
 		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
 		filp->f_op->read(filp, buf, fsize,&(filp->f_pos));
 		filp_close(filp,NULL);
-		goto OpenSintekFileSuccess;
 	}
 
-	filp1=filp_open(filename1,O_RDONLY|O_LARGEFILE,0); 	//sdcard
-	if(IS_ERR(filp1))	
-	{
-		printk("can not open file, please check the file in sdcard !\r\n"); 
-		//filp_close(filp1,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard success \r\n");
-		inode=filp1->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp1->f_op->read(filp1, buf, fsize,&(filp1->f_pos));
-		filp_close(filp1,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp2=filp_open(filename2,O_RDONLY|O_LARGEFILE,0); 	//sdcard1
-	if(IS_ERR(filp2))	
-	{
-		printk("can not open file, please check the file in sdcard1 !\r\n"); 
-		//filp_close(filp2,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard1 success \r\n");
-		inode=filp2->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp2->f_op->read(filp2, buf, fsize,&(filp2->f_pos));
-		filp_close(filp2,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp3=filp_open(filename3,O_RDONLY|O_LARGEFILE,0); 	//sdcard2
-	if(IS_ERR(filp3))	
-	{
-		printk("can not open file, please check the file in sdcard2 !\r\n"); 
-		//filp_close(filp3,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard2 success \r\n");
-		inode=filp3->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp3->f_op->read(filp3, buf, fsize,&(filp3->f_pos));
-		filp_close(filp3,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp4=filp_open(filename4,O_RDONLY|O_LARGEFILE,0); 	//sdcard3
-	if(IS_ERR(filp4))	
-	{
-		printk("can not open file, please check the file in sdcard3 !\r\n"); 
-		//filp_close(filp4,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard3 success \r\n");
-		inode=filp4->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp4->f_op->read(filp4, buf, fsize,&(filp4->f_pos));
-		filp_close(filp4,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp5=filp_open(filename5,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard
-	if(IS_ERR(filp5))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard !\r\n"); 
-		//filp_close(filp5,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard success \r\n");
-		inode=filp5->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp5->f_op->read(filp5, buf, fsize,&(filp5->f_pos));
-		filp_close(filp5,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp6=filp_open(filename6,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard1
-	if(IS_ERR(filp6))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard1 !\r\n"); 
-		//filp_close(filp6,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard1 success \r\n");
-		inode=filp6->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp6->f_op->read(filp6, buf, fsize,&(filp6->f_pos));
-		filp_close(filp6,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp7=filp_open(filename7,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard2
-	if(IS_ERR(filp7))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard2 !\r\n"); 
-		//filp_close(filp7,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard2 success \r\n");
-		inode=filp7->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp7->f_op->read(filp7, buf, fsize,&(filp7->f_pos));
-		filp_close(filp7,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-	filp8=filp_open(filename8,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard3
-	if(IS_ERR(filp8))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard3!\r\n"); 
-		//filp_close(filp8,NULL);
-		printk("---Open SintekBootloader Fail . Now return False. --- \r\n"); 
-		return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard3 success \r\n");
-		inode=filp8->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp8->f_op->read(filp8, buf, fsize,&(filp8->f_pos));
-		filp_close(filp8,NULL);
-		goto OpenSintekFileSuccess;
-	}
-
-OpenSintekFileSuccess:	
 	set_fs(fs);
 
 RetryBurnSintek:
@@ -783,13 +1806,17 @@ RetryBurnCando:
 	//**************************************************************************************//
 
 	//------ Enable FLASH writes and erases ------
-	NvU8 nLoop = 0;
+	NvBool TangoIICAddress = NV_TRUE;
+	NvU8 nLoop;
 	NvU8 FlashKeycommand[4];
 	FlashKeycommand[0] = 3;	//BLSize
 	FlashKeycommand[1] = 0xF7;	//BL_SetFlashKeyCodes
 	FlashKeycommand[2] = 0xA5; 	//FLASH_KEY0
 	FlashKeycommand[3] = 0xF1;  //FLASH_KEY1
 		
+RetryBurnRM31060:
+	nLoop = 0;
+
 	while(nLoop<5)
 	{
 		if(!(AT168_Bootloader_Write(hTouch, FlashKeycommand, 4)))
@@ -803,10 +1830,16 @@ RetryBurnCando:
 			break;
 		}
 		
-		if( nLoop == 5 )
+		if(( nLoop == 5 ) && ( NV_TRUE == TangoIICAddress ))
 		{
-			NvOsDebugPrintf("AT168_BurnCandoBootloader step 2.2  AT168_Bootloader_Write  FlashKeycommand fail \n");
-			//return NV_FALSE;
+			NvOsDebugPrintf("AT168_BurnCandoBootloader step 2.2  AT168_Bootloader_Write 0x5c FlashKeycommand fail \n");
+			hTouch->DeviceAddr = (NvU32)(0x5e << 1);
+			TangoIICAddress = NV_FALSE;
+			goto RetryBurnRM31060;
+		}
+		else if(( nLoop == 5 ) && ( NV_FALSE == TangoIICAddress )){
+			NvOsDebugPrintf("AT168_BurnCandoBootloader step 2.2  AT168_Bootloader_Write 0x5e FlashKeycommand fail \n");
+			hTouch->DeviceAddr = (NvU32)(0x5c << 1);
 			goto RetryBurnCando;
 		}
 	}
@@ -831,26 +1864,20 @@ RetryBurnCando:
 	
 	//**************************************************************************************//
 	//First step : read the bootloader source file
-	const char *filename = "/data/CandoBootloader";
-	const char *filename1 = "/sdcard/CandoBootloader";
-	const char *filename2 = "/sdcard1/CandoBootloader";
-	const char *filename3 = "/sdcard2/CandoBootloader";
-	const char *filename4 = "/sdcard3/CandoBootloader";
-	const char *filename5 = "/sdcard/sdcard/CandoBootloader";
-	const char *filename6 = "/sdcard/sdcard1/CandoBootloader";
-	const char *filename7 = "/sdcard/sdcard2/CandoBootloader";
-	const char *filename8 = "/sdcard/sdcard3/CandoBootloader";
+	const char *filename_path[10] = 
+  		{"/data/CandoBootloader",
+  		"/mnt/sdcard/CandoBootloader",
+  		"/mnt/sdcard1/CandoBootloader",
+  		"/mnt/sdcard2/CandoBootloader",
+  		"/mnt/sdcard/sdcard1/CandoBootloader",
+  		"/mnt/sdcard/sdcard2/CandoBootloader",
+  		"/mnt/sdcard/sdcard3/CandoBootloader",
+  		"/mnt/sdcard/udisk1/CandoBootloader",
+  		"/mnt/sdcard/udisk2/CandoBootloader",
+  		"/mnt/usbdisk/CandoBootloader"
+  		};
 	
 	struct file *filp; 
-	struct file *filp1;
-	struct file *filp2;
-	struct file *filp3;
-	struct file *filp4;
-	struct file *filp5;
-	struct file *filp6;
-	struct file *filp7;
-	struct file *filp8;
-	
 	struct inode *inode; 
 	mm_segment_t fs; 
 	off_t fsize; 
@@ -861,221 +1888,36 @@ RetryBurnCando:
 	NvU16 linenum;
 	//int i = 0, j = 0;
 
-	printk("start download %s\n", filename); 
+	printk("start download CandoBootloader"); 
 
 	fs=get_fs(); 
 	set_fs(KERNEL_DS); 
 
-	filp=filp_open(filename,O_RDONLY|O_LARGEFILE,0); 	//data
-	if(IS_ERR(filp))	
+	if((IS_ERR(filp = filp_open(filename_path[0],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[1],O_RDONLY|O_LARGEFILE,0))) 
+		&& (IS_ERR(filp = filp_open(filename_path[2],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[3],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[4],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[5],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[6],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[7],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[8],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[9],O_RDONLY|O_LARGEFILE,0)))
+	)
 	{
-		printk("can not open file, please check the file in data !\r\n"); 
-		//filp_close(filp,NULL);
-		//return NV_FALSE;
+		printk("can not open file CandoBootloader , please check the file path \r\n");
+		return NV_FALSE;
 	}
 	else
 	{
-		printk("Open file SintekBootloader in data success \r\n");
+		printk("Open file CandoBootloader success \r\n");
 		inode=filp->f_dentry->d_inode; 
 		magic=inode->i_sb->s_magic; 
 		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
 		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
 		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
 		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
+		printk("Cando bootloader file size:%d \n",fsize);
 		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
 		filp->f_op->read(filp, buf, fsize,&(filp->f_pos));
 		filp_close(filp,NULL);
-		goto OpenCandoFileSuccess;
 	}
-
-	filp1=filp_open(filename1,O_RDONLY|O_LARGEFILE,0); 	//sdcard
-	if(IS_ERR(filp1))	
-	{
-		printk("can not open file, please check the file in sdcard !\r\n"); 
-		//filp_close(filp1,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard success \r\n");
-		inode=filp1->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp1->f_op->read(filp1, buf, fsize,&(filp1->f_pos));
-		filp_close(filp1,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-	filp2=filp_open(filename2,O_RDONLY|O_LARGEFILE,0); 	//sdcard1
-	if(IS_ERR(filp2))	
-	{
-		printk("can not open file, please check the file in sdcard1 !\r\n"); 
-		//filp_close(filp2,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard1 success \r\n");
-		inode=filp2->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp2->f_op->read(filp2, buf, fsize,&(filp2->f_pos));
-		filp_close(filp2,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-	filp3=filp_open(filename3,O_RDONLY|O_LARGEFILE,0); 	//sdcard2
-	if(IS_ERR(filp3))	
-	{
-		printk("can not open file, please check the file in sdcard2 !\r\n"); 
-		//filp_close(filp3,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard2 success \r\n");
-		inode=filp3->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp3->f_op->read(filp3, buf, fsize,&(filp3->f_pos));
-		filp_close(filp3,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-	filp4=filp_open(filename4,O_RDONLY|O_LARGEFILE,0); 	//sdcard3
-	if(IS_ERR(filp4))	
-	{
-		printk("can not open file, please check the file in sdcard3 !\r\n"); 
-		//filp_close(filp4,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard3 success \r\n");
-		inode=filp4->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp4->f_op->read(filp4, buf, fsize,&(filp4->f_pos));
-		filp_close(filp4,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-	filp5=filp_open(filename5,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard
-	if(IS_ERR(filp5))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard !\r\n"); 
-		//filp_close(filp5,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard success \r\n");
-		inode=filp5->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp5->f_op->read(filp5, buf, fsize,&(filp5->f_pos));
-		filp_close(filp5,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-	filp6=filp_open(filename6,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard1
-	if(IS_ERR(filp6))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard1 !\r\n"); 
-		//filp_close(filp6,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard1 success \r\n");
-		inode=filp6->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp6->f_op->read(filp6, buf, fsize,&(filp6->f_pos));
-		filp_close(filp6,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-	filp7=filp_open(filename7,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard2
-	if(IS_ERR(filp7))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard2 !\r\n"); 
-		//filp_close(filp7,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard2 success \r\n");
-		inode=filp7->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp7->f_op->read(filp7, buf, fsize,&(filp7->f_pos));
-		filp_close(filp7,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
 	
-	filp8=filp_open(filename8,O_RDONLY|O_LARGEFILE,0); 	//sdcard/sdcard2
-	if(IS_ERR(filp8))	
-	{
-		printk("can not open file, please check the file in sdcard/sdcard2 !\r\n"); 
-		//filp_close(filp8,NULL);
-		//return NV_FALSE;
-	}
-	else
-	{
-		printk("Open file SintekBootloader in sdcard/sdcard2 success \r\n");
-		inode=filp8->f_dentry->d_inode; 
-		magic=inode->i_sb->s_magic; 
-		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
-		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
-		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
-		fsize=inode->i_size; 
-		printk("Sintek bootloader file size:%d \n",fsize);
-		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
-		filp8->f_op->read(filp8, buf, fsize,&(filp8->f_pos));
-		filp_close(filp,NULL);
-		goto OpenCandoFileSuccess;
-	}
-
-OpenCandoFileSuccess:
-
 	set_fs(fs);
 	
 	//**************************************************************************************//
@@ -1398,22 +2240,35 @@ OpenCandoFileSuccess:
 	ResetTPcommand[1] = 0xFB;		//BL_ExitBootload
 
 	nLoop = 0;
-	while(nLoop<3)
+	while(nLoop<5)
 	{
 		if(!(AT168_Bootloader_Write(hTouch, ResetTPcommand, 2)))
 		{
 			NvOsDebugPrintf("AT168_BurnCandoBootloader step 7.1  AT168_Bootloader_Write  ResetTPcommand fail \n");
+			
 			//return NV_FALSE;
 		}
 		else
 		{
 			AT168_PRINTF(("AT168_BurnCandoBootloader step 7.1  AT168_Bootloader_Write  ResetTPcommand success \n"));
 		}
+
 		nLoop ++;
 		msleep(3);
 		NvOsDebugPrintf("AT168_BurnCandoBootloader step 7.1  AT168_Bootloader_Write  ResetTPcommand nLoop is %d \n", nLoop);
-		if(nLoop == 3)
+		
+		if(nLoop == 5)
 		{
+			//Force reset
+			NvOdmGpioSetState(hTouch->hGpio,
+					hTouch->hPinReset,
+					NvOdmGpioPinActiveState_Low);
+			msleep(5);
+			NvOdmGpioSetState(hTouch->hGpio,
+					hTouch->hPinReset,
+					NvOdmGpioPinActiveState_High);
+			msleep(60);
+
 			break;
 		}
 	}
@@ -1422,12 +2277,335 @@ OpenCandoFileSuccess:
 	NvOsDebugPrintf("AT168_BurnCandoBootloader end \n");
 	return NV_TRUE;
 }
+
+NvBool AT168_BurnUniDisplayBootloader(NvOdmTouchDeviceHandle hDevice)
+{
+        NvOsDebugPrintf("AT168_BurnUniDisplayBootloader begin \n");	
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+
+	 //**************************************************************************************//
+	// first step : prepare before write to touch panel
+	
+	NvU8 TP_ReBootLoadCommand[2];
+
+	NvBool  flag;
+        NvU8   status[2];
+
+        flag =  NV_FALSE;
+       
+       //  check if in Bootloader Mode
+       hTouch->DeviceAddr = 0x82;
+       if((AT168_READ(hTouch,0xc0,status, 1)))
+       {
+          goto  Begin_To_Perpare_Data;   //need not to  change to BL mode
+       }   
+	
+       // change to BL mode 
+        hTouch->DeviceAddr = 0xb8;   
+       	TP_ReBootLoadCommand[0] = 0xf4; //command : 
+	TP_ReBootLoadCommand[1] = 0x51; //command : 	
+       if(!(AT168_Bootloader_Write(hTouch, TP_ReBootLoadCommand, 2)))
+       {
+            NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.1  AT168_Bootloader_Write 0xf4 0x51 fail \n");
+            goto	Change_Mode_To_APmode ;
+
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.1  AT168_Bootloader_Write 0xf4 0x51 sucess \n");    
+	}
+	  
+	 msleep(20);	//delay 1ms for process to be completed
+
+       TP_ReBootLoadCommand[0] = 0xC4; // enable write command  
+       TP_ReBootLoadCommand[1] = 0x00; //command
+        if(!(AT168_Bootloader_Write(hTouch, TP_ReBootLoadCommand, 1)))
+       {
+            NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.2  AT168_Bootloader_Write 0xC4 fail \n");
+	     goto	Change_Mode_To_APmode ;
+	  
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.2  AT168_Bootloader_Write 0xC4 sucess \n");    
+	}	
+
+       msleep(20);
+       TP_ReBootLoadCommand[0] = 0xC2; //change to BL mode command 
+       TP_ReBootLoadCommand[1] = 0x0; //command
+        if(!(AT168_Bootloader_Write(hTouch, TP_ReBootLoadCommand, 1)))
+       {
+            NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.3  AT168_Bootloader_Write 0xC2 fail \n");
+	     goto	Change_Mode_To_APmode ;
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.3  AT168_Bootloader_Write 0xC2 sucess \n");    
+	}
+
+       msleep(3000);
+       msleep(3000);
+   
+// now  pannel  is  in  BL  mode 
+
+Begin_To_Perpare_Data:   
+    
+       msleep(20);
+       hTouch->DeviceAddr = 0x82;
+       TP_ReBootLoadCommand[0] = 0xC4; //  write  enable command
+       TP_ReBootLoadCommand[1] = 0x0; //   command
+        if(!(AT168_Bootloader_Write(hTouch, TP_ReBootLoadCommand, 1)))
+       {
+            NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.4  AT168_Bootloader_Write 0xC4 fail \n");
+	     goto	Change_Mode_To_APmode ;
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 2.4  AT168_Bootloader_Write 0xC4 sucess \n");    
+	}
+
+	 msleep(3000);
+	 msleep(3000);
+       	        	
+         //secend step : read the bootloader source file
+
+	const char *filename_path[10] = 
+  		{"/data/UniDisplayBootloader",
+  		"/mnt/sdcard/UniDisplayBootloader",
+  		"/mnt/sdcard1/UniDisplayBootloader",
+  		"/mnt/sdcard2/UniDisplayBootloader",
+  		"/mnt/sdcard/sdcard1/UniDisplayBootloader",
+  		"/mnt/sdcard/sdcard2/UniDisplayBootloader",
+  		"/mnt/sdcard/sdcard3/UniDisplayBootloader",
+  		"/mnt/sdcard/udisk1/UniDisplayBootloader",
+  		"/mnt/sdcard/udisk2/UniDisplayBootloader",
+  		"/mnt/usbdisk/UniDisplayBootloader"
+  		};
+
+	struct file *filp;
+	struct inode *inode; 
+	mm_segment_t fs; 
+	off_t fsize; 
+	unsigned long magic;
+	NvU8 *buf; 
+
+	NvBool isodd = NV_TRUE;
+	NvU16 linenum;
+	//int i = 0, j = 0;
+
+	printk("start download UniDisplayBootloader\n"); 
+
+	fs=get_fs(); 
+	set_fs(KERNEL_DS); 
+
+       if((IS_ERR(filp = filp_open(filename_path[0],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[1],O_RDONLY|O_LARGEFILE,0))) 
+		&& (IS_ERR(filp = filp_open(filename_path[2],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[3],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[4],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[5],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[6],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[7],O_RDONLY|O_LARGEFILE,0)))
+		&& (IS_ERR(filp = filp_open(filename_path[8],O_RDONLY|O_LARGEFILE,0))) && (IS_ERR(filp = filp_open(filename_path[9],O_RDONLY|O_LARGEFILE,0)))
+	)
+	{
+		printk("can not open file UniDisplayBootloader , please check the file path \r\n");
+              goto	Change_Mode_To_APmode ;
+	}
+	else
+	{
+		printk("Open file UniDisplayBootloader success \r\n");
+		inode=filp->f_dentry->d_inode; 
+		magic=inode->i_sb->s_magic; 
+		AT168_PRINTF(("<1>file system magic:%li \n",magic)); 
+		AT168_PRINTF(("<1>super blocksize:%li \n",inode->i_sb->s_blocksize)); 
+		AT168_PRINTF(("<1>inode %li \n",inode->i_ino));
+		fsize=inode->i_size; 
+		printk("UniDisplaybootloader file size:%d \n",fsize);
+		buf=(NvU8 *) kmalloc(fsize+1,GFP_ATOMIC); 
+		filp->f_op->read(filp, buf, fsize,&(filp->f_pos));
+		filp_close(filp,NULL);
+	}
+	
+	set_fs(fs);
+	  
+	int k = 0;
+	NvU8 nPageNum;
+	NvU16 nWriteAddress;
+	NvU8 WriteCommand[33];
+	NvU16 nByteWriteOffset = 0;
+	NvU8 index = 0;
+	
+        k = fsize/1024;
+	printk("UniDisplaybootloader file pagenum is :%d \n",k+1 );
+
+	for (nPageNum = 0x00; nPageNum <=k; nPageNum++) // TP_FW_BEGIN_PAGE: 0x04 ;   TP_FW_END_PAGE : 0x1E;
+	{
+		nWriteAddress = (nPageNum * 1024);
+	        //msleep(1);	
+		//msleep(1);
+		nByteWriteOffset = 0;
+
+		// Write 1024 bytes to FLASH
+		while(nByteWriteOffset < 1024)
+		{
+			WriteCommand[0] = 0xc3;	//BLSize
+
+			for (index = 0; index < 32; index++ )
+			{
+			     if(nWriteAddress+nByteWriteOffset+index<fsize)
+			     	{
+				      WriteCommand[index+1] = buf[nWriteAddress+nByteWriteOffset+index];
+			     	}
+				else
+				{
+				      WriteCommand[index+1]  = 0xff;	
+				}
+                          // if( nPageNum == 20 )
+                          //   NvOsDebugPrintf(" %x ", WriteCommand[index+1]);			
+			}
+		 
+		      		   
+			if(!(AT168_Bootloader_Write(hTouch, WriteCommand, 33)))
+			{
+
+				NvOsDebugPrintf("AT168_Burn UniDisplayBootloader step 3  AT168_Bootloader_Write  WriteCommand fail \n");
+                    // do not change to AP mode , because AP code is  be writen and may be wrong
+	             NvOdmGpioSetState(hTouch->hGpio,
+	                hTouch->hPinReset,
+	             NvOdmGpioPinActiveState_Low);
+	             msleep(5);
+	             NvOdmGpioSetState(hTouch->hGpio,
+	                hTouch->hPinReset,
+	                NvOdmGpioPinActiveState_High);
+	             msleep(20);	
+                     //must send bootloader I2C address after reset in 2ms-50ms
+                           return  flag; 
+			}
+			else
+			{
+/*
+				AT168_PRINTF(("AT168_Burn UniDisplayBootloader step 3.2  AT168_Bootloader_Write  WriteCommand success nPageNum = %x \n", nPageNum));
+*/
+			}
+			
+			msleep(6);     //very 32 byte , delay 5ms
+                        NvOsDebugPrintf("wait 4 ms \n");
+	
+			nByteWriteOffset += 32;
+                        
+                        if(nByteWriteOffset == 512)
+                        {
+                            msleep(40); 
+                            NvOsDebugPrintf("wait 40 ms 512 byte ok \n");   
+                        } 
+                     
+                       if(nByteWriteOffset == 1024)
+                        {
+                            msleep(40); 
+                            NvOsDebugPrintf("wait 40 ms 1024 byte ok \n");     
+                        } 
+			
+		}
+		NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 3 Write data OK nPageNum is  %x....... \n", nPageNum);
+		
+		if(nPageNum == k)
+			flag =  NV_TRUE;
+		
+		msleep(100);
+	}
+
+ Change_Mode_To_APmode: 
+		
+       hTouch->DeviceAddr = 0x82;
+       TP_ReBootLoadCommand[0] = 0xc4; //command enable write 
+       TP_ReBootLoadCommand[1] = 0x00; //command
+       if(!(AT168_Bootloader_Write(hTouch, TP_ReBootLoadCommand, 1)))
+       {
+            NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 4  AT168_Bootloader_Write 0xc4  fail \n");
+	      flag = NV_FALSE;
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 4  AT168_Bootloader_Write 0xc4 sucess \n");    
+	}
+
+       TP_ReBootLoadCommand[0] = 0xc1; //command  change back to AP mode
+       TP_ReBootLoadCommand[1] = 0x00; //command
+       if(!(AT168_Bootloader_Write(hTouch, TP_ReBootLoadCommand, 1)))
+       {
+            NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 5  AT168_Bootloader_Write 0xc1  fail \n");
+	      flag = NV_FALSE;
+       }
+	else
+	{
+	     NvOsDebugPrintf("AT168_BurnUniDisplayBootloader step 5  AT168_Bootloader_Write 0xc1 sucess \n");    
+	}
+	  
+        msleep(20);	//delay 1ms for process to be completed
+        return  flag;
+		 
+}
+
 //For burn touchscreen bootloader
 NvBool AT168_BurnBootloader(NvOdmTouchDeviceHandle hDevice)
 {
 	NvU8 status[4]; 
+	// status[0] : report statues £¬normal is 00 
+	// status[1] : report flash status as stored in eeprom[511] ,normal is  A5, sometimes(pre-burn error) is 00
+	// status[2] : report the bootloader version  , normal is  03 
+	// status[3] : report customer cryptographic key  , normal is  02 
+	
 	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
 	
+        if((AT168_Capabilities.Version & 0x0f000000) == 0x03000000 ) 
+        {
+              NvOsDebugPrintf("AT168_BurnBootloader --   UniDisplay TS \n");   
+	       if(!(AT168_BurnUniDisplayBootloader(hDevice)))
+		 {
+		     hTouch->DeviceAddr = (NvU32)(0x5c << 1);	//change I2C back to normal 0x5c
+                     return NV_FALSE;
+		 }
+	        else
+		 {
+		     hTouch->DeviceAddr = (NvU32)(0x5c << 1);	//change I2C back to normal 0x5c
+	             return NV_TRUE; 
+	         }
+        }
+
+       if((AT168_Capabilities.Version & 0x0f000000) == 0x05000000 ) 
+        {
+              NvOsDebugPrintf("AT168_BurnBootloader --   New Sintex panel  TS \n");   
+	       if(!(AT168_BurnSintexBootloader(hDevice)))
+		 {
+			hTouch->DeviceAddr = (NvU32)(0x5c << 1);	//change I2C back to normal 0x5c
+	              return NV_FALSE;
+		 }
+	        else
+		 {
+		      hTouch->DeviceAddr = (NvU32)(0x5c << 1);	//change I2C back to normal 0x5c
+	             return NV_TRUE; 
+	       }
+        }
+     
+        if((AT168_Capabilities.Version & 0x0f000000) == 0x00000000 ) 
+        {
+               NvOsDebugPrintf("check  if  is   UniDisplay TS \n");  
+               hTouch->DeviceAddr = 0x82; 
+	       if((AT168_READ(hTouch,0xc0,status, 1)))
+               {
+                  NvOsDebugPrintf("mode data is  %x....... \n", status[0]);  
+                  hTouch->DeviceAddr = (NvU32)(0x5c << 1);
+		 if(!(AT168_BurnUniDisplayBootloader(hDevice)))
+                 {
+		     hTouch->DeviceAddr = (NvU32)(0x5c << 1);	//change I2C back to normal 0x5c
+	          return NV_FALSE;
+		 }
+	        else
+		 {
+		     hTouch->DeviceAddr = (NvU32)(0x5c << 1);	//change I2C back to normal 0x5c
+	           return NV_TRUE; 
+	         }
+              }
+                    
+        }
+       
 	//First step : get in the bootloader
 	NvOdmGpioSetState(hTouch->hGpio,
 	                hTouch->hPinReset,
@@ -1568,6 +2746,45 @@ NvBool AT168_ReadCoordinate (NvOdmTouchDeviceHandle hDevice, NvOdmTouchCoordinat
 
 }
 
+NvBool AT168_ReadInitData(NvOdmTouchDeviceHandle hDevice, NvOdmTouchInitDataInfo* InitData)
+{
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+
+	NvU8 InitDataValue[8] = {0};
+	if(!AT168_READ(hTouch, AT168_XMAX_LO, InitDataValue, (AT168_VERSION_PROTOCOL - AT168_XMAX_LO + 1)))
+	{
+		NvOsDebugPrintf("NvOdmTouch_at168:  AT168_ReadInitData AT168_READ InitDataValue fail .\n");
+		return NV_FALSE;
+	}
+	else
+	{
+		//Set the Max and Min position
+        AT168_Capabilities.XMinPosition = 0; //AT168_MIN_X;
+        AT168_Capabilities.YMinPosition = 0; //AT168_MIN_Y;
+        AT168_Capabilities.XMaxPosition = ((InitDataValue[1] << 8) | (InitDataValue[0])); //AT168_MAX_X;
+        AT168_Capabilities.YMaxPosition = ((InitDataValue[3] << 8) | (InitDataValue[2])); //AT168_MAX_Y;
+
+		//Set the Version
+        AT168_Capabilities.Version = ((InitDataValue[4] << 24) | (InitDataValue[5] << 16) | (InitDataValue[6] << 8) | (InitDataValue[7]) );
+
+		/* change the touchscreen capabilities */
+		NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
+		//add to InitData
+		InitData->xMin = AT168_Capabilities.XMinPosition;
+		InitData->yMin = AT168_Capabilities.YMinPosition;
+		InitData->xMax = AT168_Capabilities.XMaxPosition;
+		InitData->yMax = AT168_Capabilities.YMaxPosition;
+
+		InitData->version = AT168_Capabilities.Version;	
+	}
+
+	//NvOsDebugPrintf("AT168_ReadInitData: now FW xMAX is %d   yMAx is %d Version is %x.\n", AT168_Capabilities.XMaxPosition, AT168_Capabilities.YMaxPosition, AT168_Capabilities.Version);
+
+	//NvOsDebugPrintf("AT168_ReadInitData: now InitData xMAX is %d   yMAx is %d Version is %x.\n", InitData->xMax, InitData->yMax, InitData->version);
+
+	return NV_TRUE;	
+}
+
 void AT168_GetCapabilities (NvOdmTouchDeviceHandle hDevice, NvOdmTouchCapabilities* pCapabilities)
 {
 	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
@@ -1576,40 +2793,42 @@ void AT168_GetCapabilities (NvOdmTouchDeviceHandle hDevice, NvOdmTouchCapabiliti
 
 NvBool AT168_PowerOnOff (NvOdmTouchDeviceHandle hDevice, NvBool OnOff)
 {
-//	AT168_PRINTF(("NvOdm Touch: AT168_PowerOnOff OnOff=%d \n", OnOff));
-//	return NV_TRUE;
-        #if 1 //defined(CONFIG_7373C_V20)
-        AT168_PRINTF(("NvOdm Touch: AT168_PowerOnOff OnOff=%d \n", OnOff));
+	#if (defined(CONFIG_7373C_V20)||defined(CONFIG_7564C_V10))
+	AT168_PRINTF(("NvOdm Touch: AT168_PowerOnOff OnOff=%d \n", OnOff));
 
-        AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
-        if(OnOff)
-        {
-                NvOdmGpioSetState(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinActiveState_High);
+	AT168_TouchDevice* hTouch = (AT168_TouchDevice*)hDevice;
+	if(OnOff)
+	{
+ 		NvOdmGpioSetState(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinActiveState_High);
+ 		
+ 		msleep(50);
+		//Force reset, for some hexing touchsceeen can not boot up
+		NvOdmGpioSetState(hTouch->hGpio,
+	                	hTouch->hPinReset,
+	                	NvOdmGpioPinActiveState_Low);
+		msleep(5);
+		NvOdmGpioSetState(hTouch->hGpio,
+	               		hTouch->hPinReset,
+	                	NvOdmGpioPinActiveState_High);
+		msleep(60);
 
-                msleep(50);
-                //Force reset, for some hexing touchsceeen can not boot up
-                NvOdmGpioSetState(hTouch->hGpio,
-                                hTouch->hPinReset,
-                                NvOdmGpioPinActiveState_Low);
-                msleep(5);
-                NvOdmGpioSetState(hTouch->hGpio,
-                                hTouch->hPinReset,
-                                NvOdmGpioPinActiveState_High);
+		NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_FALSE);		
+
+	}
+	else
+	{
+		NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_TRUE);
+                  
+                AT168_WRITE(hTouch, SLEEP_MODE_COMMAND, SLEEP_MODE_PARAMETER);   //send standy command
                 msleep(60);
 
-                NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_FALSE);             
+		NvOdmGpioSetState(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinActiveState_Low);    
+ 
+                                  
+	}
+	#endif
 
-        }
-        else
-       {
-                NvOdmGpioInterruptMask(hTouch->hGpioIntr,NV_TRUE);
-                NvOdmGpioSetState(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinActiveState_Low);
-        }
-        #endif
-
-        return NV_TRUE;
-
-
+	return NV_TRUE;
 }
 
 NvBool AT168_Open (NvOdmTouchDeviceHandle* hDevice)
@@ -1619,8 +2838,8 @@ NvBool AT168_Open (NvOdmTouchDeviceHandle* hDevice)
 	NvU32 found = 0;
 	NvU32 I2cInstance = 0;
 
-	NvU32 GpioPort[2] = {0};
-	NvU32 GpioPin[2] = {0};
+	NvU32 GpioPort[3] = {0};
+	NvU32 GpioPin[3] = {0};
 	int GpioNum = 0;
 
 	AT168_PRINTF(("===***NvOdm Touch: AT168_Open***===\n"));
@@ -1727,20 +2946,18 @@ NvBool AT168_Open (NvOdmTouchDeviceHandle* hDevice)
 	}
 	NvOdmGpioConfig(hTouch->hGpio, hTouch->hPinInterrupt, NvOdmGpioPinMode_InputData);
 
-#if 1 //defined(CONFIG_7373C_V20)
-        hTouch->hPinPower = NvOdmGpioAcquirePinHandle(hTouch->hGpio, GpioPort[2], GpioPin[2]);
-        if (!hTouch->hPinPower) {
-                NvOsDebugPrintf("NvOdm Touch : Couldn't get GPIO hPinPower \n");
-                //goto fail;
-        }
-        NvOdmGpioConfig(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinMode_Output);
+#if (defined(CONFIG_7373C_V20)||defined(CONFIG_7564C_V10))
+	hTouch->hPinPower = NvOdmGpioAcquirePinHandle(hTouch->hGpio, GpioPort[2], GpioPin[2]);
+	if (!hTouch->hPinPower) {
+		NvOsDebugPrintf("NvOdm Touch : Couldn't get GPIO hPinPower \n");
+		//goto fail;
+	}
+	NvOdmGpioConfig(hTouch->hGpio, hTouch->hPinPower, NvOdmGpioPinMode_Output);
 
-        NvOdmGpioSetState(hTouch->hGpio,
-                        hTouch->hPinPower,
-                        NvOdmGpioPinActiveState_High);
+	NvOdmGpioSetState(hTouch->hGpio,
+	                hTouch->hPinPower,
+	                NvOdmGpioPinActiveState_High);
 #endif
-
-
 	/**********************************************************/
 	/* set default capabilities */
 	NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
@@ -1756,59 +2973,52 @@ NvBool AT168_Open (NvOdmTouchDeviceHandle* hDevice)
 	NvU8 InitData[8] = {0};
 	if(!AT168_READ(hTouch, AT168_XMAX_LO, InitData, (AT168_VERSION_PROTOCOL - AT168_XMAX_LO + 1)))
 	{
+		//when can not read , xMax and yMax default value is 1024 X 600 .
+		AT168_Capabilities.XMinPosition = 0; //AT168_MIN_X;
+		AT168_Capabilities.YMinPosition = 0; //AT168_MIN_Y;
+		AT168_Capabilities.XMaxPosition = 1024; //AT168_MAX_X;
+		AT168_Capabilities.YMaxPosition = 600; //AT168_MAX_Y;
 		NvOsDebugPrintf("NvOdmTouch_at168:  AT168_Open AT168_READ InitData fail .\n");
+		AT168_Capabilities.Version = ((InitData[4] << 24) | (InitData[5] << 16) | (InitData[6] << 8) | (InitData[7]));
 		//return NV_FALSE;
+	}else{
+		#if 0
+		int j = 0;
+		do
+		{
+			NvOsDebugPrintf("NvOdmTouch_at168: InitData[%d] = 0x%x---\n", j, InitData[j]);
+			j++;
+
+		}while(j < 8);
+		#endif
+	
+		//Set the Max and Min position
+		AT168_Capabilities.XMinPosition = 0; //AT168_MIN_X;
+		AT168_Capabilities.YMinPosition = 0; //AT168_MIN_Y;
+		AT168_Capabilities.XMaxPosition = ((InitData[1] << 8) | (InitData[0])); //AT168_MAX_X;
+		AT168_Capabilities.YMaxPosition = ((InitData[3] << 8) | (InitData[2])); //AT168_MAX_Y;
+		AT168_Capabilities.Version = ((InitData[4] << 24) | (InitData[5] << 16) | (InitData[6] << 8) | (InitData[7]));
+		if((0 == AT168_Capabilities.XMaxPosition) 
+				|| (0 == AT168_Capabilities.XMaxPosition)
+				|| (AT168_Capabilities.XMaxPosition >= 61440) //61440 means 0xf000
+				|| (AT168_Capabilities.YMaxPosition >= 61440)){
+			NvOsDebugPrintf("=== xMax yMax from touchscreen FW is %d %d, now set default ===\n", AT168_Capabilities.XMaxPosition, AT168_Capabilities.YMaxPosition);	
+			AT168_Capabilities.XMaxPosition = 1024;
+			AT168_Capabilities.YMaxPosition = 600;
+			AT168_Capabilities.Version = 0x02000000;
+		}
 	}
-
-	#if 0
-	int j = 0;
-	do
-	{
-		AT168_PRINTF(("NvOdmTouch_at168: InitData[%d] = 0x%x---\n", j, InitData[j]));
-		j++;
-
-	}while(j < 8);
-	#endif
-	
-	//Set the Max and Min position
-	AT168_Capabilities.XMinPosition = 0; //AT168_MIN_X;
-	AT168_Capabilities.YMinPosition = 0; //AT168_MIN_Y;
-	AT168_Capabilities.XMaxPosition = ((InitData[1] << 8) | (InitData[0])); //AT168_MAX_X;
-	AT168_Capabilities.YMaxPosition = ((InitData[3] << 8) | (InitData[2])); //AT168_MAX_Y;
-	
 	//Set the Version
-	AT168_Capabilities.Version = ((InitData[4] << 24) | (InitData[5] << 16) | (InitData[6] << 8) | (InitData[7]) );
+	//AT168_Capabilities.Version = ((InitData[4] << 24) | (InitData[5] << 16) | (InitData[6] << 8) | (InitData[7]) );
 
-
-	#if 1	 //for old version of hexing touchscreen , when hexing FW update, mask them	
-	if((AT168_Capabilities.XMaxPosition == 1024) && (AT168_Capabilities.YMaxPosition == 600))	
-	{		
-		NvOsDebugPrintf("NvOdmTouch_at168: ---Sintek touchscreen--- .\n");	
-	}	
-	else if((AT168_Capabilities.XMaxPosition == 4096) && (AT168_Capabilities.YMaxPosition == 4096))	
-	{		
-		NvOsDebugPrintf("NvOdmTouch_at168: ---Cando touchscreen--- .\n");	
-	}	
-	else if((AT168_Capabilities.XMaxPosition == 4096) && (AT168_Capabilities.YMaxPosition == 2560))
-	{		
-		NvOsDebugPrintf("NvOdmTouch_at168: ---UniDisplay touchscreen--- .\n");	
-	}	
-	else	
-	{		
-		NvOsDebugPrintf("NvOdmTouch_at168: ---Maybe Old Sintek FW touchscreen--- .\n");		
-		AT168_Capabilities.XMaxPosition = 1024;		
-		AT168_Capabilities.YMaxPosition = 600;		
-		AT168_Capabilities.Version = 0x02000012;	
-	}	
-	#endif
-	
-	AT168_PRINTF(("NvOdmTouch_at168: now xMAX is %d   yMAx is %d.\n", AT168_Capabilities.XMaxPosition, AT168_Capabilities.YMaxPosition));
+	AT168_Capabilities.CalibrationData = 0;
+	NvOsDebugPrintf("NvOdmTouch_at168: now FW xMAX is %d   yMAx is %d Version is %x.\n", AT168_Capabilities.XMaxPosition, AT168_Capabilities.YMaxPosition, AT168_Capabilities.Version);
 	/* change the touchscreen capabilities */
 	NvOdmOsMemcpy(&hTouch->Caps, &AT168_Capabilities, sizeof(NvOdmTouchCapabilities));
 	/**********************************************************/
 	*hDevice = &hTouch->OdmTouch;
 	
-	NvOsDebugPrintf("===NvOdmTouch_at168: AT168_Open success===\n");	
+	AT168_PRINTF(("===NvOdmTouch_at168: AT168_Open success===\n"));	
 	return NV_TRUE;
 
  fail:

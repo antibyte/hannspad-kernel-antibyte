@@ -24,10 +24,9 @@
 
 
 // Module debug: 0=disable, 1=enable
-//#define NVODMTOUCH_ENABLE_PRINTF (1)
+#define NVODMTOUCH_ENABLE_PRINTF (0)
 
-//#if (NV_DEBUG && NVODMTOUCH_ENABLE_PRINTF)
-#if (NVODMTOUCH_ENABLE_PRINTF)
+#if (NV_DEBUG && NVODMTOUCH_ENABLE_PRINTF)
 #define NVODMTOUCH_PRINTF(x)   NvOdmOsDebugPrintf x
 #else
 #define NVODMTOUCH_PRINTF(x)
@@ -40,6 +39,7 @@ extern "C"
  
 typedef struct NvOdmTouchDeviceRec{
     NvBool (*ReadCoordinate)    (NvOdmTouchDeviceHandle hDevice, NvOdmTouchCoordinateInfo *coord);
+	NvBool (*ReadInitData)      (NvOdmTouchDeviceHandle hDevice, NvOdmTouchInitDataInfo *InitData);
     NvBool (*EnableInterrupt)   (NvOdmTouchDeviceHandle hDevice, NvOdmOsSemaphoreHandle hInterruptSemaphore);
     NvBool (*HandleInterrupt)   (NvOdmTouchDeviceHandle hDevice);
     NvBool (*GetSampleRate)     (NvOdmTouchDeviceHandle hDevice, NvOdmTouchSampleRate* pTouchSampleRate);
@@ -49,6 +49,8 @@ typedef struct NvOdmTouchDeviceRec{
     void   (*GetCapabilities)   (NvOdmTouchDeviceHandle hDevice, NvOdmTouchCapabilities* pCapabilities);
     NvBool (*GetCalibrationData)(NvOdmTouchDeviceHandle hDevice, NvU32 NumOfCalibrationData, NvS32* pRawCoordBuffer);
     void (*SetCalibration)(NvOdmTouchDeviceHandle hDevice);
+    void (*SetBaseline)(NvOdmTouchDeviceHandle hDevice);
+    void (*SetCalibrateResult)(NvOdmTouchDeviceHandle hDevice);
     NvBool (*BurnBootloader)(NvOdmTouchDeviceHandle hDevice);
     void   (*Close)             (NvOdmTouchDeviceHandle hDevice);
     NvU16                       CurrentSampleRate;

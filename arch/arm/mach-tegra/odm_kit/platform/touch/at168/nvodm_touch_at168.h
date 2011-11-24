@@ -49,6 +49,8 @@ void AT168_SetCalibration(NvOdmTouchDeviceHandle hDevice);
 
 NvBool AT168_ReadCoordinate( NvOdmTouchDeviceHandle hDevice, NvOdmTouchCoordinateInfo *coord);
 
+NvBool AT168_ReadInitData( NvOdmTouchDeviceHandle hDevice, NvOdmTouchInitDataInfo *InitData);
+
 NvBool AT168_EnableInterrupt(NvOdmTouchDeviceHandle hDevice, NvOdmOsSemaphoreHandle hInterruptSemaphore);
 
 NvBool AT168_HandleInterrupt(NvOdmTouchDeviceHandle hDevice);
@@ -70,6 +72,10 @@ NvBool AT168_BurnSintexBootloader(NvOdmTouchDeviceHandle hDevice);
 NvBool AT168_BurnCandoBootloader(NvOdmTouchDeviceHandle hDevice);
 
 NvBool AT168_BurnBootloader(NvOdmTouchDeviceHandle hDevice);
+
+void AT168_SetBaseline(NvOdmTouchDeviceHandle hDevice);
+
+void AT168_SetCalibrateResult(NvOdmTouchDeviceHandle hDevice);
 
 #if defined(__cplusplus)
 }

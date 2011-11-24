@@ -34,7 +34,7 @@ extern "C"
 
 
 // ODM policy: enable=1 (disable=0) ADT7461 standby mode
-#define ADT7461_ODM_STANDBY_ENABLED (1)
+#define ADT7461_ODM_STANDBY_ENABLED (0)
 
 // ODM policy: protect=1 (not=0) thermal limits from being overwritten by API
 #define ADT7461_ODM_LOCAL_INTR_LIMITS_PROTECTED         (1)

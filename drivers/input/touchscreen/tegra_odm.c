@@ -25,9 +25,9 @@
 #include <linux/platform_device.h>
 #include <linux/kthread.h>
 #include <linux/delay.h>
-#include <linux/earlysuspend.h>
+//#include <linux/earlysuspend.h>
 #include <linux/freezer.h>
-//#include <linux/tegra_devices.h>
+
 #include <nvodm_services.h>
 #include <nvodm_touch.h>
 
@@ -38,10 +38,26 @@
 #else
 #define TEGRA_ODM_PRINTF(x)
 #endif
+#define TOOL_WIDTH_MAX		8
+
+/* Ratio TOOL_WIDTH_FINGER / TOOL_WIDTH_MAX must be < 0.6f to be considered
+ * "finger" press.
+ */
+#define TOOL_WIDTH_FINGER	1
 
 #define PEN_RELEASE		0
 #define PEN_DOWN 		1
+
+/* Ratio TOOL_WIDTH_CHEEK / TOOL_WIDTH_MAX must be > 0.6f to be considered
+ * "cheek" press.  (Cheek presses are ignored in phone mode, under assumption
+ * that user accidentally pressed cheek against touch screen.)
+ */
+
+/* the kernel supports 5 fingers only as of now */
+#define MAX_FINGERS	5
 #define TOUCH_INTERVAL		35
+
+#define NVODM_MAX_TOUCH_SCREEN_LINE 60
 
 struct tegra_touch_driver_data
 {
@@ -57,11 +73,14 @@ struct tegra_touch_driver_data
 	NvU32			MaxY;
 	NvU32			MinY;
 	int			shutdown;
-	struct early_suspend	early_suspend;
+	//struct early_suspend	early_suspend;
 	bool pen_state;
 	NvU32	Version;
-	NvBool	bBurnBootloader;
+	NvU32	CalibrationData;
 	NvBool bIsSuspended;
+	NvBool	bBurnBootloader;
+	NvS16 BaselineDate[NVODM_MAX_TOUCH_SCREEN_LINE];
+	NvS16 CalibrateResultDate[NVODM_MAX_TOUCH_SCREEN_LINE];
 };
 
 #define NVODM_TOUCH_NAME "nvodm_touch"
@@ -88,6 +107,25 @@ static ssize_t tegra_touch_burn_bootloader(struct device *dev, struct device_att
 //burn bootloader interface
 static DEVICE_ATTR(burnbootloader, S_IRWXUGO, NULL, tegra_touch_burn_bootloader);
 
+static ssize_t tegra_touch_get_calibration(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	TEGRA_ODM_PRINTF(("==tegra_touch_get_calibration ! == \n"));	
+	struct tegra_touch_driver_data *touch = (struct tegra_touch_driver_data *)dev_get_drvdata(dev);
+	
+	if( 1 == touch->caps.CalibrationData ){
+		return sprintf(buf, " Do calibration OK , CalibrationData (%d) \n", touch->caps.CalibrationData);
+	}else if( 2 == touch->caps.CalibrationData ){
+		return sprintf(buf, "Do calibration fail , CalibrationData (%d) \n", touch->caps.CalibrationData);
+	}else if( 0 == touch->caps.CalibrationData ){
+		return sprintf(buf, "Not do calibration, please check, CalibrationData (%d) \n", touch->caps.CalibrationData);
+	}else{
+		return sprintf(buf, "NULL , CalibrationData (%d) \n", touch->caps.CalibrationData);
+	}
+
+	//return sprintf(buf, "%d\n", touch->CalibrationData);
+	//return sprintf(buf, "%d\n", touch->caps.);
+}
+
 static ssize_t tegra_touch_set_calibration(struct device *dev, struct device_attribute *attr, char *buf, size_t count)
 {
 	TEGRA_ODM_PRINTF(("==tegra_touch_set_calibration, please don't touch your panel ! == \n"));	
@@ -95,13 +133,15 @@ static ssize_t tegra_touch_set_calibration(struct device *dev, struct device_att
 	
 	NvOdmTouchSetCalibration(touch->hTouchDevice);
 
+	NvOdmTouchDeviceGetCapabilities(touch->hTouchDevice, &touch->caps);
+
 	TEGRA_ODM_PRINTF(("==tegra_touch_set_calibration, over ! == \n"));	
 	return count;
 }
 
-
 //set calibration interface
-static DEVICE_ATTR(calibration, S_IRWXUGO, NULL, tegra_touch_set_calibration);
+//static DEVICE_ATTR(calibration, S_IRWXUGO, NULL, tegra_touch_set_calibration);
+static DEVICE_ATTR(calibration, S_IRWXUGO, tegra_touch_get_calibration, tegra_touch_set_calibration);
 
 static ssize_t tegra_touch_show_version(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -110,14 +150,136 @@ static ssize_t tegra_touch_show_version(struct device *dev, struct device_attrib
 	
 	return sprintf(buf, "%x\n", touch->Version);
 }
+
 //set Version interface
 static DEVICE_ATTR(version, S_IRWXUGO, tegra_touch_show_version, NULL);
+
+static ssize_t tegra_touch_show_baseline(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	TEGRA_ODM_PRINTF(("==tegra_touch_show_baseline begin ! == \n"));	
+	struct tegra_touch_driver_data *touch = (struct tegra_touch_driver_data *)dev_get_drvdata(dev);
+	
+	#if 0
+	printk("---tegra_odm caps BaselineDate ---\n");
+	printk("tegra_odm caps BaselineDate X Value is--\n");
+	int i = 0;
+	do
+	{
+		printk(" %d ",  touch->caps.BaselineDate[i]);
+		i++;
+	}while(i < 37);
+	printk("\n");
+
+	i = 37;
+	printk("tegra_odm caps BaselineDate Y Value is--\n");
+	do
+	{
+		printk(" %d ",  touch->caps.BaselineDate[i]);
+		i++;
+	}while(i < 58);
+	printk("\n");
+	#endif
+
+ 	return sprintf(buf, "X baseline data %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d  \nY baseline data %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d  \n ", 
+				       				touch->caps.BaselineDate[0], touch->caps.BaselineDate[1], touch->caps.BaselineDate[2], touch->caps.BaselineDate[3], touch->caps.BaselineDate[4],
+				       				touch->caps.BaselineDate[5], touch->caps.BaselineDate[6], touch->caps.BaselineDate[7], touch->caps.BaselineDate[8], touch->caps.BaselineDate[9],
+				       				touch->caps.BaselineDate[10], touch->caps.BaselineDate[11], touch->caps.BaselineDate[12], touch->caps.BaselineDate[13], touch->caps.BaselineDate[14],
+				       				touch->caps.BaselineDate[15], touch->caps.BaselineDate[16], touch->caps.BaselineDate[17], touch->caps.BaselineDate[18], touch->caps.BaselineDate[19],
+				       				touch->caps.BaselineDate[20], touch->caps.BaselineDate[21], touch->caps.BaselineDate[22], touch->caps.BaselineDate[23], touch->caps.BaselineDate[24],
+				       				touch->caps.BaselineDate[25], touch->caps.BaselineDate[26], touch->caps.BaselineDate[27], touch->caps.BaselineDate[28], touch->caps.BaselineDate[29],
+				       				touch->caps.BaselineDate[30], touch->caps.BaselineDate[31], touch->caps.BaselineDate[32], touch->caps.BaselineDate[33], touch->caps.BaselineDate[34],
+				       				touch->caps.BaselineDate[35], touch->caps.BaselineDate[36], touch->caps.BaselineDate[37], touch->caps.BaselineDate[38], touch->caps.BaselineDate[39],
+				       				touch->caps.BaselineDate[40], touch->caps.BaselineDate[41], touch->caps.BaselineDate[42], touch->caps.BaselineDate[43], touch->caps.BaselineDate[44],
+				       				touch->caps.BaselineDate[45], touch->caps.BaselineDate[46], touch->caps.BaselineDate[47], touch->caps.BaselineDate[48], touch->caps.BaselineDate[49],
+				       				touch->caps.BaselineDate[50], touch->caps.BaselineDate[51], touch->caps.BaselineDate[52], touch->caps.BaselineDate[53], touch->caps.BaselineDate[54],
+				       				touch->caps.BaselineDate[55], touch->caps.BaselineDate[56], touch->caps.BaselineDate[57]);
+	//return 0;
+}
+
+static ssize_t tegra_touch_set_baseline(struct device *dev, struct device_attribute *attr, char *buf, size_t count)
+{
+	TEGRA_ODM_PRINTF(("==tegra_touch_set_baseline, begin ! == \n"));	
+	struct tegra_touch_driver_data *touch = (struct tegra_touch_driver_data *)dev_get_drvdata(dev);
+	NvOdmTouchCapabilities *caps = &touch->caps;
+	
+	NvOdmTouchSetBaseline(touch->hTouchDevice);
+
+	NvOdmTouchDeviceGetCapabilities(touch->hTouchDevice, &touch->caps);
+
+	TEGRA_ODM_PRINTF(("==tegra_touch_set_baseline, over ! == \n"));	
+	return count;
+}
+
+//set/get baseline interface
+static DEVICE_ATTR(baseline, S_IRWXUGO, tegra_touch_show_baseline, tegra_touch_set_baseline);
+
+static ssize_t tegra_touch_show_calibrateresult(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	TEGRA_ODM_PRINTF(("==tegra_touch_show_calibratresult begin ! == \n"));	
+	struct tegra_touch_driver_data *touch = (struct tegra_touch_driver_data *)dev_get_drvdata(dev);
+
+	#if 0
+	printk("---tegra_odm caps calibratresult ---\n");
+	printk("tegra_odm caps calibratresult X Value is--\n");
+	int i = 0;
+	do
+	{
+		printk(" %d ",  touch->caps.CalibrateResultDate[i]);
+		i++;
+	}while(i < 37);
+	printk("\n");
+
+	i = 37;
+	printk("tegra_odm caps calibratresult Y Value is--\n");
+	do
+	{
+		printk(" %d ",  touch->caps.CalibrateResultDate[i]);
+		i++;
+	}while(i < 58);
+	printk("\n");
+	#endif
+
+	return sprintf(buf, "X calibrateresult data %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d  \nY calibrateresult data %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d  \n ", 
+				       				touch->caps.CalibrateResultDate[0], touch->caps.CalibrateResultDate[1], touch->caps.CalibrateResultDate[2], touch->caps.CalibrateResultDate[3], touch->caps.CalibrateResultDate[4],
+				       				touch->caps.CalibrateResultDate[5], touch->caps.CalibrateResultDate[6], touch->caps.CalibrateResultDate[7], touch->caps.CalibrateResultDate[8], touch->caps.CalibrateResultDate[9],
+				       				touch->caps.CalibrateResultDate[10], touch->caps.CalibrateResultDate[11], touch->caps.CalibrateResultDate[12], touch->caps.CalibrateResultDate[13], touch->caps.CalibrateResultDate[14],
+				       				touch->caps.CalibrateResultDate[15], touch->caps.CalibrateResultDate[16], touch->caps.CalibrateResultDate[17], touch->caps.CalibrateResultDate[18], touch->caps.CalibrateResultDate[19],
+				       				touch->caps.CalibrateResultDate[20], touch->caps.CalibrateResultDate[21], touch->caps.CalibrateResultDate[22], touch->caps.CalibrateResultDate[23], touch->caps.CalibrateResultDate[24],
+				       				touch->caps.CalibrateResultDate[25], touch->caps.CalibrateResultDate[26], touch->caps.CalibrateResultDate[27], touch->caps.CalibrateResultDate[28], touch->caps.CalibrateResultDate[29],
+				       				touch->caps.CalibrateResultDate[30], touch->caps.CalibrateResultDate[31], touch->caps.CalibrateResultDate[32], touch->caps.CalibrateResultDate[33], touch->caps.CalibrateResultDate[34],
+				       				touch->caps.CalibrateResultDate[35], touch->caps.CalibrateResultDate[36], touch->caps.CalibrateResultDate[37], touch->caps.CalibrateResultDate[38], touch->caps.CalibrateResultDate[39],
+				       				touch->caps.CalibrateResultDate[40], touch->caps.CalibrateResultDate[41], touch->caps.CalibrateResultDate[42], touch->caps.CalibrateResultDate[43], touch->caps.CalibrateResultDate[44],
+				       				touch->caps.CalibrateResultDate[45], touch->caps.CalibrateResultDate[46], touch->caps.CalibrateResultDate[47], touch->caps.CalibrateResultDate[48], touch->caps.CalibrateResultDate[49],
+				       				touch->caps.CalibrateResultDate[50], touch->caps.CalibrateResultDate[51], touch->caps.CalibrateResultDate[52], touch->caps.CalibrateResultDate[53], touch->caps.CalibrateResultDate[54],
+				       				touch->caps.CalibrateResultDate[55], touch->caps.CalibrateResultDate[56], touch->caps.CalibrateResultDate[57]);
+	
+	//return 0;
+}
+
+static ssize_t tegra_touch_set_calibrateresult(struct device *dev, struct device_attribute *attr, char *buf, size_t count)
+{
+	TEGRA_ODM_PRINTF(("==tegra_touch_set_calibrateresult, begin ! == \n"));	
+	struct tegra_touch_driver_data *touch = (struct tegra_touch_driver_data *)dev_get_drvdata(dev);
+
+	NvOdmTouchCapabilities *caps = &touch->caps;
+	
+	NvOdmTouchSetCalibrateResult(touch->hTouchDevice);
+
+	NvOdmTouchDeviceGetCapabilities(touch->hTouchDevice, &touch->caps);
+
+	TEGRA_ODM_PRINTF(("==tegra_touch_set_calibrateresult, over ! == \n"));	
+	return count;
+}
+
+//set/get calibrateresult interface
+static DEVICE_ATTR(calibrateresult, S_IRWXUGO, tegra_touch_show_calibrateresult, tegra_touch_set_calibrateresult);
 
 extern NvU32 NvOdmTouchDriverIndex(NvU32* pindex);
 static int tegra_touch_thread(void *pdata);
 
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
+//#ifdef CONFIG_HAS_EARLYSUSPEND
+#if 0
 static void tegra_touch_early_suspend(struct early_suspend *es)
 {
 	struct tegra_touch_driver_data *touch;
@@ -146,7 +308,6 @@ static void tegra_touch_late_resume(struct early_suspend *es)
 	else {
 		pr_err("tegra_touch_late_resume: NULL handles passed\n");
 	}
-	//touch->bSuspended=NV_FALSE;
 }
 
 #endif
@@ -154,7 +315,6 @@ static void tegra_touch_late_resume(struct early_suspend *es)
 static int tegra_touch_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct tegra_touch_driver_data *touch = platform_get_drvdata(pdev);
-		
 	if (touch && touch->hTouchDevice) {
 		if (!touch->bIsSuspended) {
 			NvOdmTouchPowerOnOff(touch->hTouchDevice, NV_FALSE);
@@ -208,6 +368,7 @@ static void pen_release(struct tegra_touch_driver_data *touch, int x, int y)
 	//pr_err("pen_release\n");
     TEGRA_ODM_PRINTF(("pen_release\n"));
 }
+
 static void pen_down(struct tegra_touch_driver_data *touch, int x, int y) 
 {
 		input_report_abs(touch->input_dev, ABS_X, x);
@@ -266,7 +427,7 @@ static int __init tegra_touch_probe_ak4183(struct platform_device *pdev)
 {
 	struct tegra_touch_driver_data *touch = NULL;
 	struct input_dev *input_dev = NULL;
-	int err, i = 0;
+	int err;
 	NvOdmTouchCapabilities *caps;
 
 	touch = kzalloc(sizeof(struct tegra_touch_driver_data), GFP_KERNEL);
@@ -293,6 +454,7 @@ static int __init tegra_touch_probe_ak4183(struct platform_device *pdev)
 		goto err_open_failed;
 	}
 	touch->bPollingMode = NV_FALSE;
+	touch->bIsSuspended = NV_FALSE;
 	if (!NvOdmTouchEnableInterrupt(touch->hTouchDevice, touch->semaphore)) {
 		err = -1;
 		pr_err("tegra_touch_probe: Interrupt failed, polling mode\n");
@@ -324,19 +486,6 @@ static int __init tegra_touch_probe_ak4183(struct platform_device *pdev)
 	NvOdmTouchDeviceGetCapabilities(touch->hTouchDevice, &touch->caps);
 
 	caps = &touch->caps;
-
-	/* supported virtual keys */
-	set_bit(BTN_TOUCH, touch->input_dev->keybit);
-	for (i = 0; i < (caps->MaxNumberOfFingerCoordReported - 1); i++) {
-		set_bit(BTN_2 + i, touch->input_dev->keybit);
-	}
-	touch->bIsSuspended = NV_FALSE;
-	/* expose multi-touch capabilities */
-	set_bit(ABS_MT_TOUCH_MAJOR, touch->input_dev->keybit);
-	set_bit(ABS_MT_POSITION_X, touch->input_dev->keybit);
-	set_bit(ABS_MT_POSITION_Y, touch->input_dev->keybit);
-	set_bit(ABS_X, touch->input_dev->keybit);
-	set_bit(ABS_Y, touch->input_dev->keybit);
 
 	if (caps->Orientation & NvOdmTouchOrientation_XY_SWAP) {
 		touch->MaxY = caps->XMaxPosition;
@@ -381,7 +530,8 @@ static int __init tegra_touch_probe_ak4183(struct platform_device *pdev)
 		goto err_input_register_device_failed;
 	}
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
+//#ifdef CONFIG_HAS_EARLYSUSPEND
+#if 0
         touch->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
         touch->early_suspend.suspend = tegra_touch_early_suspend;
         touch->early_suspend.resume = tegra_touch_late_resume;
@@ -439,12 +589,13 @@ static void tegra_touch_fingers_dealwith(struct tegra_touch_driver_data *touch, 
 	}
 	input_sync(touch->input_dev);
 }
-
+#define TIME_READ_INTERVAL    10 //MS
 static int tegra_touch_thread_at168(void *pdata)
 {
 	struct tegra_touch_driver_data *touch =
 		(struct tegra_touch_driver_data*)pdata;
 	NvOdmTouchCoordinateInfo coord = {0};
+	NvOdmTouchInitDataInfo InitData = {0};
 	NvU16 i = 0;
 	NvBool bKeepReadingSamples = NV_TRUE;
 	NvOdmTouchCapabilities *caps = &touch->caps;
@@ -463,7 +614,34 @@ InBurnBootloader:
 			msleep(1000);
 			goto InBurnBootloader;
 		}
-		
+	
+		//printk("tegra_thread_at168 now Initdata-version is 0x%x caps-version is 0x%x\n", InitData.version, caps->Version);
+		if((0 != InitData.version) || (0 != caps->Version)){
+			//printk("tegra_touch_thread_at168 do not need to re-read Initdata\n");
+		}else{
+			if (!NvOdmTouchReadInitData(touch->hTouchDevice, &InitData)){
+				pr_err("ReadCoordinate Couldn't read initdata \n");
+			}else{
+				printk("tegra_thread_at168 now MaxX is %d MaxY is %d \n", InitData.xMax, InitData.yMax);
+				input_set_abs_params(touch->input_dev, ABS_X, InitData.xMin, InitData.xMax, 0, 0);
+				input_set_abs_params(touch->input_dev, ABS_Y, InitData.yMin, InitData.yMax, 0, 0);
+				input_set_abs_params(touch->input_dev, ABS_HAT0X, InitData.xMin, InitData.xMax, 0, 0);
+				input_set_abs_params(touch->input_dev, ABS_HAT0Y, InitData.yMin, InitData.yMax, 0, 0);
+
+				//Add it for Multi-touch
+				input_set_abs_params(touch->input_dev, ABS_MT_POSITION_X, InitData.xMin, InitData.xMax, 0, 0);
+				input_set_abs_params(touch->input_dev, ABS_MT_POSITION_Y, InitData.yMin, InitData.yMax, 0, 0);
+				input_set_abs_params(touch->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
+				input_set_abs_params(touch->input_dev, ABS_MT_WIDTH_MAJOR, 0, 200, 0, 0);
+
+				//input_unregister_device(touch->input_dev);
+				if (input_register_device(touch->input_dev))
+				{
+					pr_err("tegra_thread_at168 : cannot to register input device\n");
+				}
+			}
+		}
+
 		bKeepReadingSamples = NV_TRUE;
 		//while (bKeepReadingSamples&&(!touch->bSuspended))
 		while (bKeepReadingSamples)
@@ -513,7 +691,7 @@ InBurnBootloader:
 				case 0:
 					tegra_touch_fingers_dealwith(touch, coord, 0); //fingers = 0
 
-					msleep(20);
+					msleep(TIME_READ_INTERVAL);
 					break;
 				#endif
 				case 0:
@@ -521,11 +699,11 @@ InBurnBootloader:
 				
 				case 1:
 					tegra_touch_fingers_dealwith(touch, coord, 1); //fingers = 1
-					msleep(3);
+					msleep(TIME_READ_INTERVAL);
 					break;
 				case 2:
 					tegra_touch_fingers_dealwith(touch, coord, 2); //fingers = 2
-					msleep(3);
+					msleep(TIME_READ_INTERVAL);
 					break;
 				default:
 					break;
@@ -536,7 +714,7 @@ HandleInterrupt:
 			{
 				//if(!touch->bSuspended){
 				tegra_touch_fingers_dealwith(touch, coord, 0); //fingers = 0
-				msleep(20);
+				msleep(TIME_READ_INTERVAL);
 				//}
 				bKeepReadingSamples = NV_FALSE;
 			}
@@ -574,9 +752,8 @@ static int __init tegra_touch_probe_at168(struct platform_device *pdev)
         pr_err("tegra_touch_probe: NvOdmTouchDeviceOpen failed\n");
         goto err_open_failed;
     }
-    touch->bPollingMode = NV_TRUE;
+    touch->bPollingMode = NV_FALSE;
 	touch->bIsSuspended = NV_FALSE;
-
     if (!NvOdmTouchEnableInterrupt(touch->hTouchDevice, touch->semaphore)) {
         err = -1;
         pr_err("tegra_touch_probe: Interrupt failed, polling mode\n");
@@ -649,12 +826,20 @@ static int __init tegra_touch_probe_at168(struct platform_device *pdev)
     //*******************************************************************************//
     platform_set_drvdata(pdev, touch);
 
-    err = input_register_device(input_dev);
-    if (err)
-    {
-        pr_err("tegra_touch_probe: Unable to register input device\n");
-        goto err_input_register_device_failed;
-    }
+	//modified for if no version(initdata) from touchscreen,will not register the device.
+	if(0 != touch->Version)
+	{
+    	err = input_register_device(input_dev);
+    	if (err)
+    	{
+        	pr_err("tegra_touch_probe: Unable to register input device\n");
+        	goto err_input_register_device_failed;
+    	}
+	}
+	else
+	{
+		printk("tegra_touch_probe_at168 now Version is 0 \n");
+	}
 
  //*************************************************//
     //create calibration file,  path  ->   /sys/devices/platform/tegra_touch/calibration
@@ -675,16 +860,31 @@ static int __init tegra_touch_probe_at168(struct platform_device *pdev)
    		pr_err("tegra_touch_probe : device_create_file burnbootloader failed\n");		
 		goto err_input_register_device_failed;	
 	}
+   //create touch panel baseline file,  path  ->   /sys/devices/platform/tegra_touch/baseline    
+   err = device_create_file(&pdev->dev, &dev_attr_baseline);    
+   if (err) {		
+   		pr_err("tegra_touch_probe : device_create_file baseline failed\n");		
+		goto err_input_register_device_failed;	
+	}
+   //create touch panel calibrateresult file,  path  ->   /sys/devices/platform/tegra_touch/calibrateresult    
+   err = device_create_file(&pdev->dev, &dev_attr_calibrateresult);    
+   if (err) {		
+   		pr_err("tegra_touch_probe : device_create_file calibrateresult failed\n");		
+		goto err_input_register_device_failed;	
+	}
 //*************************************************//
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
+//#ifdef CONFIG_HAS_EARLYSUSPEND
+#if 0
        touch->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
        touch->early_suspend.suspend = tegra_touch_early_suspend;
        touch->early_suspend.resume = tegra_touch_late_resume;
        register_early_suspend(&touch->early_suspend);
 #endif
-    printk(KERN_INFO NVODM_TOUCH_NAME 
+    /*
+	printk(KERN_INFO NVODM_TOUCH_NAME 
         ": Successfully registered the ODM touch driver %x\n", touch->hTouchDevice);
+	*/
     return 0;
 
 err_input_register_device_failed:
@@ -916,7 +1116,7 @@ static int __init tegra_touch_probe(struct platform_device *pdev)
 
   if(err) { index=0; NvOdmTouchDriverIndex(&index);  }
     //pr_err("NvOdmTouchDriverIndex()=%d\n",NvOdmTouchDriverIndex(NULL));
-    pr_err("tegra_touch_probe: err=%d\n",err);
+    //pr_err("tegra_touch_probe: err=%d\n",err);
    
         
    return err;
@@ -927,10 +1127,12 @@ static int tegra_touch_remove(struct platform_device *pdev)
 {
 	struct tegra_touch_driver_data *touch = platform_get_drvdata(pdev);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
+//#ifdef CONFIG_HAS_EARLYSUSPEND
+#if 0
         unregister_early_suspend(&touch->early_suspend);
 #endif
 #if defined(CONFIG_TOUCHSCREEN_TEGRA_ODM_AT168)
+	tegra_touch_suspend(pdev, PMSG_SUSPEND);
 	//remove the calibration file
 	device_remove_file(&pdev->dev, &dev_attr_calibration);
 	//remove the version file
@@ -968,5 +1170,3 @@ module_init(tegra_touch_init);
 module_exit(tegra_touch_exit);
 
 MODULE_DESCRIPTION("Tegra ODM touch driver");
-
-

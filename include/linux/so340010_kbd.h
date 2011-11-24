@@ -22,7 +22,13 @@
 
 #define SO340010_I2C_INSTANCE         0
 #define SO340010_I2C_ADDRESS            0x58
+#if (defined(CONFIG_7265C_V20)||defined(CONFIG_7323C_V21)||defined(CONFIG_7332C_V21)||defined(CONFIG_7113C_V10)||defined(CONFIG_7705C_V10))
+#define SO340010_I2C_SPEED          200
+#elif (defined(CONFIG_7373C_V20))
+#define SO340010_I2C_SPEED          400
+#else
 #define SO340010_I2C_SPEED          100
+#endif
 #define SO340010_I2C_TIMEOUT            NV_WAIT_INFINITE
 
 struct so340010_kbd_platform_data{

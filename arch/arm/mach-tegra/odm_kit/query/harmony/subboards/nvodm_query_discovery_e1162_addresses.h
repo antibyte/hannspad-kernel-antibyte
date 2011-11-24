@@ -406,6 +406,15 @@ static const NvOdmIoAddress s_p1162BluetoothAddresses[] =
     { NvOdmIoModule_Vdd, 0x00, TPS6586xPmuSupply_LDO4, 0 } /* VDDHOSTIF_BT -> LDO4 (AON:VDD_1V8) */
 };
 
+// Bluetooth Samsung B23
+static const NvOdmIoAddress s_p1162BluetoothB23Addresses[] =
+{
+    { NvOdmIoModule_Uart, 0x2,  0x0, 0 },                  // FIXME: Is this used?
+    { NvOdmIoModule_Gpio, (NvU32)'u'-'a', 0, 0 },          /* BT_RST#: GPIO Port U and Pin 0, Purpose set 0 means BT_RESET */
+    { NvOdmIoModule_Gpio, (NvU32)'x'-'a', 1, 1 },          /* BT_SHUTDOWN#: GPIO Port  and Pin , Purpose set 1 means BT_SHUTDOWN */
+    { NvOdmIoModule_Vdd, 0x00, TPS6586xPmuSupply_LDO4, 0 } /* VDDHOSTIF_BT -> LDO4 (AON:VDD_1V8) */
+};
+
 // Wlan
 static const NvOdmIoAddress s_WlanAddresses[] =
 {

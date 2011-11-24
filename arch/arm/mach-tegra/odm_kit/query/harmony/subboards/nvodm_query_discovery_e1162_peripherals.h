@@ -435,6 +435,15 @@
     NvOdmPeripheralClass_Other
 },
 
+#if defined(CONFIG_7705C_V10)
+// Bluetooth Samsung B23
+{
+    NV_ODM_GUID('b','c','m','_','4','3','2','9'),
+    s_p1162BluetoothB23Addresses,
+    NV_ARRAY_SIZE(s_p1162BluetoothB23Addresses),
+    NvOdmPeripheralClass_Other
+},
+#else
 // Bluetooth
 {
     NV_ODM_GUID('l','b','e','e','9','q','m','b'),
@@ -442,7 +451,7 @@
     NV_ARRAY_SIZE(s_p1162BluetoothAddresses),
     NvOdmPeripheralClass_Other
 },
-
+#endif
 // Sdio wlan  on COMMs Module
 {
     NV_ODM_GUID('s','d','i','o','w','l','a','n'),

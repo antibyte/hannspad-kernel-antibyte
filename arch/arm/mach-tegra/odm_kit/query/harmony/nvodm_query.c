@@ -42,6 +42,8 @@
 // latch problem
 #define NVODM_PMU_INT_ENABLED (0)
 
+extern void NvRmPrivGetCpuIdInfo(NvU32 *id,NvU32 *family,NvU32 *major,NvU32 *minor,NvU32 *sku);
+
 static const NvU8
 s_NvOdmQueryDeviceNamePrefixValue[] = {'T','e','g','r','a',0};
 
@@ -160,7 +162,7 @@ static const NvOdmQueryDapPortProperty s_NvOdmQueryDapPortInfoTable[] =
 
 static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
 {
-    #if defined(CONFIG_7373C_V20) //DVFS table from Lita
+#if defined(CONFIG_7373C_V20)  //DVFS table from Lita
     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
@@ -204,9 +206,9 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xa05c04ae,   /* CFG_DIG_DLL */
-            0x007fc010,   /* DLL_XFORM_DQS */
-            0x0004100a,   /* DLL_XFORM_QUSE */
+            0xA05C04AE,   /* CFG_DIG_DLL */
+            0x007FC010,   /* DLL_XFORM_DQS */
+            0x0004100A,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
             0x00000000,   /* AUTO_CAL_INTERVAL */
@@ -258,8 +260,8 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xe044048b,   /* CFG_DIG_DLL */
-            0x007fb010,   /* DLL_XFORM_DQS */
+            0xE044048B,   /* CFG_DIG_DLL */
+            0x007FB010,   /* DLL_XFORM_DQS */
             0x00014014,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
@@ -268,8 +270,8 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_1 */
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
-    }
-    #elif defined(CONFIG_7332C_V21) //DVFS table for SMB-A8901
+    }	
+#elif defined(CONFIG_7705C_V10)  //DVFS table for SMB-B8901
     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
@@ -313,9 +315,9 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xa05c04ae,   /* CFG_DIG_DLL */
-            0x007fd010,   /* DLL_XFORM_DQS */
-            0x0000a014,   /* DLL_XFORM_QUSE */
+            0xA05C04AE,   /* CFG_DIG_DLL */
+            0x007FD010,   /* DLL_XFORM_DQS */
+            0x0000A014,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
             0x00000000,   /* AUTO_CAL_INTERVAL */
@@ -367,9 +369,9 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xe044048b,   /* CFG_DIG_DLL */
-            0x007fb010,   /* DLL_XFORM_DQS */
-            0x00003c17,   /* DLL_XFORM_QUSE */
+            0xE044048B,   /* CFG_DIG_DLL */
+            0x007FB010,   /* DLL_XFORM_DQS */
+            0x00003C17,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
             0x00000000,   /* AUTO_CAL_INTERVAL */
@@ -378,8 +380,117 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
     }
- #elif  defined(CONFIG_7564C_V10)
-	   {
+#elif defined(CONFIG_7332C_V21)  //DVFS table for SMB-A8901
+    {
+                  0x20,   /* Rev 2.0 */
+                166500,   /* SDRAM frquency */
+                  1000,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x0000000A,   /* RC */
+            0x00000016,   /* RFC */
+            0x00000008,   /* RAS */
+            0x00000003,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000004,   /* W2R */
+            0x00000002,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000003,   /* RD_RCD */
+            0x00000003,   /* WR_RCD */
+            0x00000002,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000004DF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000003,   /* PCHG2PDEN */
+            0x00000003,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000A,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x00000006,   /* TFAW */
+            0x00000004,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xA05C04AE,   /* CFG_DIG_DLL */
+            0x007FD010,   /* DLL_XFORM_DQS */
+            0x0000A014,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    },
+    {
+                  0x20,   /* Rev 2.0 */
+                333000,   /* SDRAM frquency */
+                  1200,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x00000014,   /* RC */
+            0x0000002B,   /* RFC */
+            0x0000000F,   /* RAS */
+            0x00000005,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000005,   /* W2R */
+            0x00000003,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000005,   /* RD_RCD */
+            0x00000005,   /* WR_RCD */
+            0x00000003,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000009FF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000005,   /* PCHG2PDEN */
+            0x00000005,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000F,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x0000000C,   /* TFAW */
+            0x00000006,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xE044048B,   /* CFG_DIG_DLL */
+            0x007FB010,   /* DLL_XFORM_DQS */
+            0x00003C17,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    }
+#elif defined(CONFIG_7564C_V10)  //DVFS table for SMB-B9702
+     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
                   1000,   /* EMC core voltage */
@@ -422,7 +533,7 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xa05c04ae,   /* CFG_DIG_DLL */
+            0xa06e04ae,//0xa05c04ae,   /* CFG_DIG_DLL */
             0x007fb010,   /* DLL_XFORM_DQS */
             0x00078000,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
@@ -476,9 +587,9 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xe044048b,   /* CFG_DIG_DLL */
-            0x007f9010,   /* DLL_XFORM_DQS */
-            0x00023014,   /* DLL_XFORM_QUSE */
+            0xe04e048b,//0xe044048b,   /* CFG_DIG_DLL */
+            0x007fa010,//0x007f9010,   /* DLL_XFORM_DQS */
+            0x00028014,//0x00023014,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
             0x00000000,   /* AUTO_CAL_INTERVAL */
@@ -487,7 +598,7 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
     } 	
-    #elif defined(CONFIG_7323C_V21) 
+#elif defined(CONFIG_7323C_V21) 
     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
@@ -596,7 +707,7 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
     }
-    #elif defined(CONFIG_7265C_V20) 
+#elif defined(CONFIG_7265C_V20) 
     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
@@ -705,7 +816,7 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
     }	
-    #else //from peter pan 
+#else
     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
@@ -744,7 +855,7 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000008,   /* TCLKSTABLE */
             0x00000002,   /* TCLKSTOP */
             0x00000000,   /* TREFBW */
-            0x00000004,   /* QUSE_EXTRA */
+            0x00000000,   /* QUSE_EXTRA */
             0x00000002,   /* FBIO_CFG6 */
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
@@ -798,7 +909,7 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000008,   /* TCLKSTABLE */
             0x00000002,   /* TCLKSTOP */
             0x00000000,   /* TREFBW */
-            0x00000004,   /* QUSE_EXTRA */
+            0x00000000,   /* QUSE_EXTRA */
             0x00000002,   /* FBIO_CFG6 */
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
@@ -814,12 +925,16 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
     }
-    #endif	
-    #if 0
+#endif
+};
+
+static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable_T20L[] =
+{
+#if defined(CONFIG_7564C_V10)  //DVFS table for SMB-B9702
     {
                   0x20,   /* Rev 2.0 */
                 166500,   /* SDRAM frquency */
-                   950,   /* EMC core voltage */
+                  1000,   /* EMC core voltage */
                     46,   /* Number of EMC parameters below */
         {
             0x0000000A,   /* RC */
@@ -859,9 +974,9 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xE03B0323,   /* CFG_DIG_DLL */
-            0x007FC010,   /* DLL_XFORM_DQS */
-            0x00008010,   /* DLL_XFORM_QUSE */
+            0xA05C04AE,   /* CFG_DIG_DLL */
+            0x007FB010,   /* DLL_XFORM_DQS */
+            0x00078000,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
             0x00000000,   /* AUTO_CAL_INTERVAL */
@@ -913,9 +1028,118 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* ODT_WRITE */
             0x00000000,   /* ODT_READ */
             0x00000083,   /* FBIO_CFG5 */
-            0xF0320303,   /* CFG_DIG_DLL */
-            0x007FC010,   /* DLL_XFORM_DQS */
-            0x00008010,   /* DLL_XFORM_QUSE */
+            0xE044048B,   /* CFG_DIG_DLL */
+            0x007F9010,   /* DLL_XFORM_DQS */
+            0x00023014,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    }	
+#elif defined(CONFIG_7332C_V21)  //DVFS table for SMB-A8901
+    {
+                  0x20,   /* Rev 2.0 */
+                166500,   /* SDRAM frquency */
+                  1000,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x0000000A,   /* RC */
+            0x00000016,   /* RFC */
+            0x00000008,   /* RAS */
+            0x00000003,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000004,   /* W2R */
+            0x00000002,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000003,   /* RD_RCD */
+            0x00000003,   /* WR_RCD */
+            0x00000002,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000004DF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000003,   /* PCHG2PDEN */
+            0x00000003,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000A,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x00000006,   /* TFAW */
+            0x00000004,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xA05C04AE,   /* CFG_DIG_DLL */
+            0x007FD010,   /* DLL_XFORM_DQS */
+            0x0000A014,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    },
+    {
+                  0x20,   /* Rev 2.0 */
+                333000,   /* SDRAM frquency */
+                  1200,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x00000014,   /* RC */
+            0x0000002B,   /* RFC */
+            0x0000000F,   /* RAS */
+            0x00000005,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000005,   /* W2R */
+            0x00000003,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000005,   /* RD_RCD */
+            0x00000005,   /* WR_RCD */
+            0x00000003,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000009FF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000005,   /* PCHG2PDEN */
+            0x00000005,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000F,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x0000000C,   /* TFAW */
+            0x00000006,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xE044048B,   /* CFG_DIG_DLL */
+            0x007FB010,   /* DLL_XFORM_DQS */
+            0x00003C17,   /* DLL_XFORM_QUSE */
             0x00000000,   /* ZCAL_REF_CNT */
             0x00000000,   /* ZCAL_WAIT_CNT */
             0x00000000,   /* AUTO_CAL_INTERVAL */
@@ -924,8 +1148,227 @@ static const NvOdmSdramControllerConfigAdv s_NvOdmHyS5c1GbEmcConfigTable[] =
             0x00000000,   /* CFG_CLKTRIM_2 */
         }
     }
-    #endif
+#elif defined(CONFIG_7705C_V10)  //DVFS table for SMB-B8901
+    {
+                  0x20,   /* Rev 2.0 */
+                166500,   /* SDRAM frquency */
+                  1000,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x0000000A,   /* RC */
+            0x00000016,   /* RFC */
+            0x00000008,   /* RAS */
+            0x00000003,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000004,   /* W2R */
+            0x00000002,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000003,   /* RD_RCD */
+            0x00000003,   /* WR_RCD */
+            0x00000002,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000004DF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000003,   /* PCHG2PDEN */
+            0x00000003,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000A,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x00000006,   /* TFAW */
+            0x00000004,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xA05C04AE,   /* CFG_DIG_DLL */
+            0x007FD010,   /* DLL_XFORM_DQS */
+            0x0000A014,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    },
+    {
+                  0x20,   /* Rev 2.0 */
+                333000,   /* SDRAM frquency */
+                  1200,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x00000014,   /* RC */
+            0x0000002B,   /* RFC */
+            0x0000000F,   /* RAS */
+            0x00000005,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000005,   /* W2R */
+            0x00000003,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000005,   /* RD_RCD */
+            0x00000005,   /* WR_RCD */
+            0x00000003,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000009FF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000005,   /* PCHG2PDEN */
+            0x00000005,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000F,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x0000000C,   /* TFAW */
+            0x00000006,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xE044048B,   /* CFG_DIG_DLL */
+            0x007FB010,   /* DLL_XFORM_DQS */
+            0x00003C17,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    }
+#else
+	{
+                  0x20,   /* Rev 2.0 */
+                166500,   /* SDRAM frquency */
+                  1000,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x0000000A,   /* RC */
+            0x00000016,   /* RFC */
+            0x00000008,   /* RAS */
+            0x00000003,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000004,   /* W2R */
+            0x00000002,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000003,   /* RD_RCD */
+            0x00000003,   /* WR_RCD */
+            0x00000002,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000004DF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000003,   /* PCHG2PDEN */
+            0x00000003,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000A,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x00000006,   /* TFAW */
+            0x00000004,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xa05c04ae,   /* CFG_DIG_DLL */
+            0x007fd010,   /* DLL_XFORM_DQS */
+            0x00000000,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    },
+    {
+                  0x20,   /* Rev 2.0 */
+                333000,   /* SDRAM frquency */
+                  1200,   /* EMC core voltage */
+                    46,   /* Number of EMC parameters below */
+        {
+            0x00000014,   /* RC */
+            0x0000002B,   /* RFC */
+            0x0000000F,   /* RAS */
+            0x00000005,   /* RP */
+            0x00000004,   /* R2W */
+            0x00000005,   /* W2R */
+            0x00000003,   /* R2P */
+            0x0000000C,   /* W2P */
+            0x00000005,   /* RD_RCD */
+            0x00000005,   /* WR_RCD */
+            0x00000003,   /* RRD */
+            0x00000001,   /* REXT */
+            0x00000004,   /* WDV */
+            0x00000005,   /* QUSE */
+            0x00000004,   /* QRST */
+            0x00000009,   /* QSAFE */
+            0x0000000D,   /* RDV */
+            0x000009FF,   /* REFRESH */
+            0x00000000,   /* BURST_REFRESH_NUM */
+            0x00000003,   /* PDEX2WR */
+            0x00000003,   /* PDEX2RD */
+            0x00000005,   /* PCHG2PDEN */
+            0x00000005,   /* ACT2PDEN */
+            0x00000001,   /* AR2PDEN */
+            0x0000000F,   /* RW2PDEN */
+            0x000000C8,   /* TXSR */
+            0x00000003,   /* TCKE */
+            0x0000000C,   /* TFAW */
+            0x00000006,   /* TRPAB */
+            0x00000008,   /* TCLKSTABLE */
+            0x00000002,   /* TCLKSTOP */
+            0x00000000,   /* TREFBW */
+            0x00000000,   /* QUSE_EXTRA */
+            0x00000002,   /* FBIO_CFG6 */
+            0x00000000,   /* ODT_WRITE */
+            0x00000000,   /* ODT_READ */
+            0x00000083,   /* FBIO_CFG5 */
+            0xe044048b,   /* CFG_DIG_DLL */
+            0x007fb010,   /* DLL_XFORM_DQS */
+            0x0000b517,   /* DLL_XFORM_QUSE */
+            0x00000000,   /* ZCAL_REF_CNT */
+            0x00000000,   /* ZCAL_WAIT_CNT */
+            0x00000000,   /* AUTO_CAL_INTERVAL */
+            0x00000000,   /* CFG_CLKTRIM_0 */
+            0x00000000,   /* CFG_CLKTRIM_1 */
+            0x00000000,   /* CFG_CLKTRIM_2 */
+        }
+    }
+#endif
 };
+
 
 // Wake Events
 static NvOdmWakeupPadInfo s_NvOdmWakeupPadInfo[] =
@@ -947,7 +1390,7 @@ static NvOdmWakeupPadInfo s_NvOdmWakeupPadInfo[] =
     {NV_FALSE, 10, NvOdmWakeupPadPolarity_High},    // Wake Event 10 - gmi_ad21 (Accelerometer_TH/TAP)
     {NV_FALSE, 11, NvOdmWakeupPadPolarity_Low},     // Wake Event 11 - spi2_cs2 (PEN_INT, AUDIO-IRQ, LOW_BAT#)
     {NV_FALSE, 12, NvOdmWakeupPadPolarity_Low},     // Wake Event 12 - spi2_cs1 (HEADSET_DET, not used)
-    {NV_TRUE, 13, NvOdmWakeupPadPolarity_Low},     // Wake Event 13 - sdio1_dat1 (WLAN_WAKE)
+    {NV_FALSE, 13, NvOdmWakeupPadPolarity_Low},     // Wake Event 13 - sdio1_dat1 (WLAN_WAKE)
     {NV_FALSE, 14, NvOdmWakeupPadPolarity_High},    // Wake Event 14 - gp3_pv[6] (WLAN_INT)
     {NV_FALSE, 15, NvOdmWakeupPadPolarity_AnyEdge}, // Wake Event 15 - gmi_ad16  (SPI3_DOUT, DTV_SPI4_CS1)
     {NV_FALSE, 16, NvOdmWakeupPadPolarity_High},    // Wake Event 16 - rtc_irq
@@ -1171,17 +1614,41 @@ const void*
 NvOdmQuerySdramControllerConfigGet(NvU32 *pEntries, NvU32 *pRevision)
 {
 #if NVODM_ENABLE_EMC_DVFS
-    NvOdmBoardInfo BoardInfo;
+	#if 1
+	static NvU32 id,family,major,minor,sku;
+	static NvBool bread=NV_FALSE;
+	if(NV_FALSE==bread) 
+	{
+		NvRmPrivGetCpuIdInfo(&id,&family,&major,&minor,&sku);
+		//NvRmPrivReadChipId(NULL);
+		bread=NV_TRUE;
+	}
+		
+	if( 0x20==id && 0x10==sku ) //T20L
+	{
+		*pRevision = s_NvOdmHyS5c1GbEmcConfigTable_T20L[0].Revision;
+		*pEntries = NV_ARRAY_SIZE(s_NvOdmHyS5c1GbEmcConfigTable_T20L);
+	    	return (const void*)s_NvOdmHyS5c1GbEmcConfigTable_T20L;
+	}
+	else
+	{
+		*pRevision = s_NvOdmHyS5c1GbEmcConfigTable[0].Revision;
+		*pEntries = NV_ARRAY_SIZE(s_NvOdmHyS5c1GbEmcConfigTable);
+	    	return (const void*)s_NvOdmHyS5c1GbEmcConfigTable;
+	}
+	#else
+	NvOdmBoardInfo BoardInfo;
 
-    if (NvOdmPeripheralGetBoardInfo(BOARD_ID_HARMONY, &BoardInfo))
-    {
-        {
-                *pRevision = s_NvOdmHyS5c1GbEmcConfigTable[0].Revision;
-                *pEntries = NV_ARRAY_SIZE(s_NvOdmHyS5c1GbEmcConfigTable);
-            	return (const void*)s_NvOdmHyS5c1GbEmcConfigTable;
-        }
+	if (NvOdmPeripheralGetBoardInfo(BOARD_ID_HARMONY, &BoardInfo))
+	{
+		{
+			*pRevision = s_NvOdmHyS5c1GbEmcConfigTable[0].Revision;
+			*pEntries = NV_ARRAY_SIZE(s_NvOdmHyS5c1GbEmcConfigTable);
+		    	return (const void*)s_NvOdmHyS5c1GbEmcConfigTable;
+		}
 
-    }
+	}
+	#endif
 #endif
     if (pEntries)
         *pEntries = 0;

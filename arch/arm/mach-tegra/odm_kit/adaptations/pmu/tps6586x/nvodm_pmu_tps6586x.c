@@ -154,7 +154,7 @@ static NvU32 TPS6586xPmuVoltageSetVLDO4(const NvU32 bits);
 /* Martin.Chi */
 static void Resume_Isr(void *arg);
 extern void Tps6586x_Resume_Isr_Register(void);
-NvOdmPmuDeviceHandle G_hdev;
+NvOdmPmuDeviceHandle G_hdev=0;
 
 /* FIXME: Change getVoltage/setVoltage according to your fuse */
 static const TPS6586xPmuSupplyInfo tps6586xSupplyInfoTable[] =
@@ -1328,7 +1328,7 @@ Tps6586xWriteVoltageReg(
     	status = Tps6586xSetExternalSupply(hDevice, Ext_TPS2051BPmuSupply_VDDIO_VID, NV_TRUE);
     	printk("enbale dock power %s\n",status?"success":"fail");
     	NvOdmOsWaitUS(250);
-		flag++;
+		flag=1;
    }
     return NV_TRUE;
 }
@@ -1987,7 +1987,7 @@ static int power_fs_sync(void)
 extern void F4_Deal(unsigned int wake_up_flag);
 extern void pmu_tegra_cpufreq_hotplug(bool onoff);
 extern unsigned int WAKE_UP_FROM_LP1_FLAG;
-struct timeval last_receive_time;       //Add for double click in 250ms; 2011-03-01
+struct timeval last_receive_time;       //Add for double click in 500ms; 2010-10-27
 extern unsigned int PM_SCREEN_IS_OFF;
 
 /* Interrupt function for Power Button*/
@@ -2015,18 +2015,16 @@ static void Resume_Isr(void *arg)
 
         do_gettimeofday(&start_time);
 
-        //Add for double click in 350ms; 2011-03-01
-        //if(WAKE_UP_FROM_LP1_FLAG != 1) {
+        //Add for double click in 500ms; 2010-10-27
+        if(WAKE_UP_FROM_LP1_FLAG != 1) {
                 if((( start_time.tv_sec == last_receive_time.tv_sec )) && 
-                   (( start_time.tv_usec - last_receive_time.tv_usec ) < 350000)) {
-                        printk("Debounce : double click detected\n");
+                   (( start_time.tv_usec - last_receive_time.tv_usec ) < 500000)) {
                         goto left;
                 }
-        //}
+        }
 
         /* If it's the press for wake-up, send out a "KEY_F4" */
-        if((WAKE_UP_FROM_LP1_FLAG == 1) && (delatime < 1)) {
-		do_gettimeofday(&last_receive_time);
+        if(WAKE_UP_FROM_LP1_FLAG == 1) {
                 printk("Send First KEY_F4(LP1) -->");
                 F4_Deal(1);     /* Send a simulate to upper  (PowerManager Service) */
         } else {
@@ -2083,8 +2081,8 @@ static void Resume_Isr(void *arg)
                         }
                 }
 
-                /* Clear EXITSLREQ to 1(0x14, bit B1) in 3s */
-		if(((gpio_get_value(pinnum)& 0x1)) && (delatime < 3)) {
+                /* Clear EXITSLREQ to 1(0x14, bit B1) in 6s */
+		if(((gpio_get_value(pinnum)& 0x1)) && (delatime < 6)) {
                         if(WAKE_UP_FROM_LP1_FLAG == 1) { /* Release quickly and PMU flag is not set */
                                 /* Fixme : need clear PMU flag here although this flag is not set ? */
                                 printk("Release quickly(LP1) -->");

@@ -135,6 +135,12 @@ Tps6586xRtcCountWrite(
     #if 0
     Tps6586xI2cWrite32(hDevice, TPS6586x_RC6_RTC_COUNT4, (Count<<2));
     Tps6586xI2cWrite8(hDevice,  TPS6586x_RCA_RTC_COUNT0, 0);
+    #elif 1 
+    Tps6586xI2cWrite8(hDevice, TPS6586x_RC9_RTC_COUNT1, (Count<<2)); 
+    Tps6586xI2cWrite8(hDevice, TPS6586x_RC8_RTC_COUNT2, (Count<<2)>>8);
+    Tps6586xI2cWrite8(hDevice, TPS6586x_RC7_RTC_COUNT3, (Count<<2)>>16);
+    Tps6586xI2cWrite8(hDevice, TPS6586x_RC6_RTC_COUNT4, (Count<<2)>>24);
+    Tps6586xI2cWrite8(hDevice,  TPS6586x_RCA_RTC_COUNT0, 0);
     #else//fix time saving issue
     NvU32 CountT,CountCys;
     CountCys=10;

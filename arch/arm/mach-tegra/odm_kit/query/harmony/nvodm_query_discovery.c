@@ -459,6 +459,7 @@ NvOdmPeripheralGetBoardInfo(
     NvU16 BoardId,
     NvOdmBoardInfo *pBoardInfo)
 {
+	return NV_FALSE;
     NvBool RetVal = NV_FALSE;
     NvOdmServicesI2cHandle hOdmI2c = NULL;
     NvU8 EepromInst, CurrentBoard;

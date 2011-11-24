@@ -67,6 +67,7 @@ typedef struct NvOdmTouchDeviceRec *NvOdmTouchDeviceHandle;
 
 #define NVODM_MAX_INPUT_COORDS 5
 
+#define NVODM_MAX_TOUCH_SCREEN_LINE 58
 /**
  * @brief Defines the gesture type.
  */
@@ -180,6 +181,14 @@ typedef struct
     /// Holds the version of the touchscreen.
     NvU32 Version;
 
+    /// Holds the calibration data of the touchscreen.
+    NvU32 CalibrationData;
+
+    /// Holds the baseline data of the touchscreen.
+    NvS16 BaselineDate[NVODM_MAX_TOUCH_SCREEN_LINE];
+
+    /// Holds the calibrate result of the touchscreen.
+    NvS16 CalibrateResultDate[NVODM_MAX_TOUCH_SCREEN_LINE];    
 } NvOdmTouchCapabilities;
 
 
@@ -244,6 +253,23 @@ typedef struct
 
 } NvOdmTouchCoordinateInfo;
 
+/**
+ * Defines the ODM touch pad coordinate information.
+ */
+typedef struct
+{
+	/// Specifies the X-min value.
+	NvU32 xMin;
+	/// Specifies the Y-min value.
+	NvU32 yMin;
+	/// Specifies the X-max value.
+	NvU32 xMax;
+	/// Specifies the Y-max value.
+    NvU32 yMax;
+	/// Specifies the version value.
+	NvU32 version;
+
+} NvOdmTouchInitDataInfo;
 
 /**
  * @brief Defines the structure for the sampling rate.
@@ -306,6 +332,14 @@ NvOdmTouchDeviceGetCapabilities(NvOdmTouchDeviceHandle hDevice, NvOdmTouchCapabi
 NvBool
 NvOdmTouchReadCoordinate( NvOdmTouchDeviceHandle hDevice, NvOdmTouchCoordinateInfo *coord);
 
+/**
+ * Gets Initdata info from the touch device.
+ *
+ * @param hDevice The handle to the touch pad.
+ * @return NV_TRUE if successful, or NV_FALSE otherwise.
+ */
+NvBool
+NvOdmTouchReadInitData( NvOdmTouchDeviceHandle hDevice, NvOdmTouchInitDataInfo *InitData);
 
 /**
  * Hooks up the interrupt handle to the GPIO interrupt and enables the interrupt.
@@ -420,6 +454,23 @@ NvOdmTouchSetCalibration(NvOdmTouchDeviceHandle hDevice);
  */
 NvBool
 NvOdmTouchBurnBootloader(NvOdmTouchDeviceHandle hDevice);
+/**
+ * Sets the touch panel baseline data to memony.
+ * @param hDevice A handle to the touch panel.
+ *
+ * @no return.
+ */
+void
+NvOdmTouchSetBaseline(NvOdmTouchDeviceHandle hDevice);
+
+/**
+ * Sets the touch panel calibrat result data to memony.
+ * @param hDevice A handle to the touch panel.
+ *
+ * @no return.
+ */
+void
+NvOdmTouchSetCalibrateResult(NvOdmTouchDeviceHandle hDevice);
 
 #if defined(__cplusplus)
 }
