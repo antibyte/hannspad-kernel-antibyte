@@ -215,7 +215,7 @@ typedef struct NvRmSpiRec *NvRmSpiHandle;
  *
  */
  
- void NvRmSpiTransaction( 
+void NvRmSpiTransaction( 
     NvRmSpiHandle hRmSpi,
     NvU32 SpiPinMap,
     NvU32 ChipSelectId,

@@ -589,7 +589,7 @@ static void tegra_touch_fingers_dealwith(struct tegra_touch_driver_data *touch, 
 	}
 	input_sync(touch->input_dev);
 }
-#define TIME_READ_INTERVAL    10 //MS
+#define TIME_READ_INTERVAL    5 //MS
 static int tegra_touch_thread_at168(void *pdata)
 {
 	struct tegra_touch_driver_data *touch =

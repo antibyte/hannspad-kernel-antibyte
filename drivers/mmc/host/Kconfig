@@ -44,6 +44,18 @@ config MMC_SDHCI_IO_ACCESSORS
 	  This is silent Kconfig symbol that is selected by the drivers that
 	  need to overwrite SDHCI IO memory accessors.
 
+config MMC_SDHCI_NATIVE_BLOCKSIZE
+	bool "Use Host Controller's actual blocksize"
+	depends on MMC_SDHCI && EXPERIMENTAL
+	default n
+	help
+	  Normally, the SDHCI host controller will limit the xfer blocksize
+	  to 512 bytes, even if the hardware host controller can do more.
+	  This option uses the maximum blocksize supported by the hardware.
+
+	  I have seen no corruption on a Tegra2, but if unsure, say N.
+
+
 config MMC_SDHCI_PCI
 	tristate "SDHCI support on PCI bus"
 	depends on MMC_SDHCI && PCI

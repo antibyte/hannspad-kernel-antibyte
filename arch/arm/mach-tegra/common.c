@@ -122,8 +122,8 @@ void __init tegra_init_cache(void)
 	u32 aux_ctrl;
 	writel(0x331, p + L2X0_TAG_LATENCY_CTRL);
 	writel(0x441, p + L2X0_DATA_LATENCY_CTRL);
-	//writel(7, p + L2X0_PREFETCH_OFFSET);
-	writel(2, p + L2X0_PWR_CTRL);
+	/*writel(7, p + L2X0_PREFETCH_OFFSET);
+	  writel(2, p + L2X0_PWR_CTRL);*/
 
 	aux_ctrl = readl(p + L2X0_CACHE_TYPE);
 	aux_ctrl = (aux_ctrl & 0x700) << (17-8);

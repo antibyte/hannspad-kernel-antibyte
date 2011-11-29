@@ -72,7 +72,7 @@ extern "C"
         32,    /* Proportional frequency boost decrease 32/256 ~ 12% */  \
     },\
     2,      /* Relative adjustement of average freqiency 1/2^2 ~ 25% */ \
-    1,      /* Number of smaple intervals with NRT to trigger boost = 2 */ \
+    0,      /* Number of smaple intervals with NRT to trigger boost = 2 */ \
     1       /* NRT idle cycles threshold = 1 */ 
 
 /**

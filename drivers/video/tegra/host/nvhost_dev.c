@@ -705,11 +705,12 @@ static int __init nvhost_probe(struct platform_device *pdev)
 	err = nvhost_module_init(&host->mod, "host1x", power_host, NULL, &pdev->dev);
 	if (err) goto fail;
 
-	platform_set_drvdata(pdev, host);
 
 	clk_enable(host->mod.clk[0]);
 	nvhost_syncpt_reset(&host->syncpt);
 	clk_disable(host->mod.clk[0]);
+
+	platform_set_drvdata(pdev, host);
 
 	dev_info(&pdev->dev, "initialized\n");
 	return 0;

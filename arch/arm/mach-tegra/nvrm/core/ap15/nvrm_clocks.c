@@ -1083,7 +1083,7 @@ NvRmPrivClocksInit(NvRmDeviceHandle hRmDevice)
             s_ClockSourceFreq[NvRmClockSource_PllP3] =  72000;
             s_ClockSourceFreq[NvRmClockSource_PllP4] = 108000;
             s_ClockSourceFreq[NvRmClockSource_PllC0] = 600000;
-            s_ClockSourceFreq[NvRmClockSource_PllM0] = 333000;
+            s_ClockSourceFreq[NvRmClockSource_PllM0] = 335000;
             s_ClockSourceFreq[NvRmClockSource_SystemBus] = 150000;
             NvRmPrivAp15SimPllInit(hRmDevice); // Enable plls in simulation
             NvRmPrivBusClockInit(

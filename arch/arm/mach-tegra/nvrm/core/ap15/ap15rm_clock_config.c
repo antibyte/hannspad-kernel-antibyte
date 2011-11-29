@@ -1834,7 +1834,7 @@ NvRmPrivAp15EmcConfigInit(NvRmDeviceHandle hRmDevice)
         for (j = 0; j < ConfigurationsCount; j++)
         {
             // Find match with 1MHz tolerance for allowed configuration
-            if ((Emc2xKHz <= (pEmcConfigurations[j].SdramKHz * 2 + 1000)) &&
+            if ((Emc2xKHz <= (pEmcConfigurations[j].SdramKHz * 2 + 8000)) &&
                 (Emc2xKHz >= (pEmcConfigurations[j].SdramKHz * 2 - 1000)))
             {
                 s_Ap15EmcConfigSortedTable[i].Timing0Reg = pEmcConfigurations[j].EmcTiming0;

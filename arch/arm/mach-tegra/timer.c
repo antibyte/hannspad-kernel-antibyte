@@ -103,7 +103,7 @@ static void tegra_timer_set_mode(enum clock_event_mode mode,
 
 static cycle_t tegra_clocksource_read(struct clocksource *cs)
 {
-	return timer_readl(TIMERUS_CNTR_1US);
+	return (timer_readl(TIMERUS_CNTR_1US));
 }
 
 static struct clock_event_device tegra_clockevent = {

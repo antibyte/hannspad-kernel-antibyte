@@ -35,6 +35,7 @@
 #include "nvos.h"
 #include "nvrm_memmgr.h"
 #include "nvrm_dma.h"
+#include "nvrm_i2c.h"
 #include "nvrm_ioctls.h"
 #include "nvrm_power_private.h"
 #include "mach/nvrm_linux.h"
@@ -126,27 +127,65 @@ static void client_detach(NvRtClientHandle client)
         dctx.PackageIdx = 0;
         for (;;)
         {
-            NvBool found = NV_FALSE;
 
-            if ((ptr = NvRtFreeObjRef(&dctx,
+            ptr = NvRtFreeObjRef(&dctx,
+                                 NvRtObjType_NvRm_GpioHandle,
+                                 NULL);
+            if (!ptr) break;
+            NVRT_LEAK("NvRm", "GpioHandle", (NvU32)ptr);
+            NvRmGpioReleasePinHandles((NvRmGpioHandle)s_hRmGlobal, (NvRmGpioPinHandle *)&ptr, 1);
+        }
+
+        for (;;)
+        {
+            ptr = NvRtFreeObjRef(&dctx,
                                       NvRtObjType_NvRm_NvRmMemHandle,
-                                      NULL)) != NULL)
-            {
-                NVRT_LEAK("NvRm", "NvRmMemHandle", ptr);
+                                 NULL);
+            if (!ptr) break;
+            NVRT_LEAK("NvRm", "NvRmMemHandle", (NvU32)ptr);
                 NvRmMemHandleFree(ptr);
-                found = NV_TRUE;
             }
-            if ((ptr = NvRtFreeObjRef(&dctx,
+        for(;;)
+        {
+            ptr = NvRtFreeObjRef(&dctx,
+                                 NvRtObjType_NvRm_NvRmI2cHandle,
+                                 NULL);
+            if (!ptr) break;
+            NVRT_LEAK("NvRm", "NvRmI2cHandle", (NvU32)ptr);
+            NvRmI2cClose((NvRmI2cHandle)ptr);
+        }
+
+        for(;;)
+        {
+            ptr = NvRtFreeObjRef(&dctx,
                                       NvRtObjType_NvRm_NvRmDmaHandle,
-                                      NULL)) != NULL)
-            {
-                NVRT_LEAK("NvRm", "NvRmDmaHandle", ptr);
+                                 NULL);
+            if(!ptr) break;
+            NVRT_LEAK("NvRm", "NvRmDmaHandle", (NvU32)ptr);
                 NvRmDmaFree(ptr);
-                found = NV_TRUE;
             }
 
-            if (found == NV_FALSE)
-                break;
+        for(;;)
+        {
+            NvRmExternalClockObj *obj = NULL;
+            ptr = NvRtFreeObjRef(&dctx,
+                                 NvRtObjType_NvRm_PinmuxClkHandle,
+                                 NULL);
+            if(!ptr) break;
+            NVRT_LEAK("NvRm", "PinmuxClkHandle", (NvU32)ptr);
+
+            obj = (NvRmExternalClockObj *)ptr;
+            NvRmExternalClockConfig(g_NvRmHandle,
+                                    NvOdmIoModule_ExternalClock,
+                                    obj->Instance,
+                                    obj->Config,
+                                    NV_TRUE);
+            /*
+             * this "obj" is a static struct in nvrm_pinmux_dispatch.c
+             * reset Instance number so it can be reused for next clock
+             * config
+             */
+            obj->Instance = NVRM_EXT_CLK_CNT;
         }
 
         NvRtUnregisterClient(s_RtHandle, client);
@@ -550,7 +589,7 @@ static struct kobj_attribute nvrm_notifier_attribute =
 
 static void notify_daemon(const char* notice)
 {
-	long timeout = HZ * 30;
+	long timeout = HZ * 40;
 
 	// In case daemon's pid is not reported, do not signal or wait.
 	if (!s_nvrm_daemon_pid) {
@@ -597,14 +636,14 @@ int tegra_pm_notifier(struct notifier_block *nb,
         // NvRmPrivDvsStop();
         break;
 // end patch
-    case PM_POST_SUSPEND:
-        notify_daemon(STRING_PM_POST_SUSPEND);
+	case PM_POST_SUSPEND:
+    	    notify_daemon(STRING_PM_POST_SUSPEND);
 #ifndef CONFIG_HAS_EARLYSUSPEND
-		notify_daemon(STRING_PM_DISPLAY_ON);
+	    notify_daemon(STRING_PM_DISPLAY_ON);
 #endif
-        NvRmPrivDvsRun();
-        break;
-    default:
+    	    NvRmPrivDvsRun();
+    	    break;
+	default:
         printk(KERN_ERR "%s: unknown event %ld\n", __func__, event);
         return NOTIFY_DONE;
     }

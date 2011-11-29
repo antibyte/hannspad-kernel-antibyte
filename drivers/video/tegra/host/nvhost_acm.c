@@ -114,9 +114,11 @@ int nvhost_module_init(struct nvhost_module *mod, const char *name,
 				__func__, name);
 			break;
 		}
-		clk_enable(mod->clk[i]);
-		clk_set_rate(mod->clk[i], rate);
-		clk_disable(mod->clk[i]);
+        if (rate != clk_get_rate(mod->clk[i])) {
+			clk_enable(mod->clk[i]);
+			clk_set_rate(mod->clk[i], rate);
+			clk_disable(mod->clk[i]);
+		}
 		i++;
 	}
 
@@ -124,6 +126,7 @@ int nvhost_module_init(struct nvhost_module *mod, const char *name,
 	mod->func = func;
 	mod->parent = parent;
 	mod->powered = false;
+
 	mutex_init(&mod->lock);
 	init_waitqueue_head(&mod->idle);
 	INIT_DELAYED_WORK(&mod->powerdown, powerdown_handler);

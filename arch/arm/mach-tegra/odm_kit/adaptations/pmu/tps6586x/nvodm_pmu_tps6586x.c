@@ -25,6 +25,7 @@
 #include <linux/fs.h>
 #include <linux/leds.h>
 #include <mach/nvrm_linux.h>
+#include <linux/workqueue.h>
 //#include <linux/leds_state.h> //added by ab
 #include <nvrm_gpio.h>
 
@@ -96,6 +97,11 @@ int is_ledon = 0;
 #define L3_CHARGING_CURRENT        250
 
 static atomic_t resume_isr_lock;
+
+/* Powerbutton workqueue */
+static void handle_power_button();
+static struct workqueue_struct *wq_struct;
+DECLARE_WORK(work,handle_power_button);
 
 /* Valtage tables for LDOs */
 /* FIXME: Modify those tables according to your fuse */
@@ -1583,6 +1589,10 @@ void Tps6586x_Resume_Isr_Register(void)
 {
 	NvOdmGpioPinHandle hGpioPin;
 
+
+/***********************************************************************************************************************************/
+
+
 #define PMU_RESUME_PIN_IRQ_TYPE (NvOdmGpioPinMode_InputInterruptFallingEdge|NvOdmGpioPinMode_InputInterruptRisingEdge)
 	printk("Tps6586x_Resume_Isr_Register\n");
 
@@ -1611,6 +1621,9 @@ void Tps6586x_Resume_Isr_Register(void)
 		if(NvOdmGpioInterruptRegister(hPmu->hGpio, &hGpioIntr, hGpioPin, PMU_RESUME_PIN_IRQ_TYPE,
 					      Resume_Isr, NULL/*(void*)(&Resume_St)*/, 0)) {
 			printk("Register PMU Resume Irq successfully\n");
+
+			/* Setup the workqueue for the power button ISR */
+			wq_struct=create_workqueue("power_button");
 		}
 	}
 }
@@ -1984,14 +1997,36 @@ static int power_fs_sync(void)
         return 0;
 }
 
+
+
 extern void F4_Deal(unsigned int wake_up_flag);
 extern void pmu_tegra_cpufreq_hotplug(bool onoff);
 extern unsigned int WAKE_UP_FROM_LP1_FLAG;
 struct timeval last_receive_time;       //Add for double click in 500ms; 2010-10-27
 extern unsigned int PM_SCREEN_IS_OFF;
+static void handle_power_button();
 
-/* Interrupt function for Power Button*/
+/* The actual ISR for the power button interrupt */
+
 static void Resume_Isr(void *arg)
+{
+	
+        if(atomic_add_return(1, &resume_isr_lock) != 1) {
+		NvOdmGpioInterruptDone(hGpioIntr);                
+		return;
+        }
+	atomic_set(&resume_isr_lock, 1);
+	queue_work(wq_struct,&work);
+        NvOdmGpioInterruptDone(hGpioIntr);
+}
+
+
+/* Interrupt handling for power button         */
+/* moved to a workqueue - antibyte Nov 2011    */
+/* This was inside the ISR before with lots of */
+/* debug printk's, causing strange behaviour   */
+
+static void handle_power_button()
 {
 	NvU32 data = 0;
 	NvU32 pinnum = 21 * 8 + 2; // 'v'-'a' = 21
@@ -2000,35 +2035,28 @@ static void Resume_Isr(void *arg)
 	NvU32 delatime = 0;
         NvU32 screen_flag = PM_SCREEN_IS_OFF;
         
-        printk("PMU Resume Irq. In %d, %d --> ", WAKE_UP_FROM_LP1_FLAG, screen_flag);
+        /*printk("PMU Resume Irq. In %d, %d --> ", WAKE_UP_FROM_LP1_FLAG, screen_flag);*/
+	/* Check if we are already handling an interrupt */
 
-        if(atomic_add_return(1, &resume_isr_lock) != 1) {
-                atomic_sub(1, &resume_isr_lock);
-                printk("ISR Lock is %d\n", resume_isr_lock);
-                goto left;
-        }
         /* If it is already released, left */
         if(((gpio_get_value(pinnum)& 0x1)) && (WAKE_UP_FROM_LP1_FLAG != 1)) { 
-                printk("Already release, left--> \n ");
                 goto left;
         }
 
         do_gettimeofday(&start_time);
 
         //Add for double click in 500ms; 2010-10-27
-        if(WAKE_UP_FROM_LP1_FLAG != 1) {
                 if((( start_time.tv_sec == last_receive_time.tv_sec )) && 
                    (( start_time.tv_usec - last_receive_time.tv_usec ) < 500000)) {
                         goto left;
                 }
-        }
+        //}
 
         /* If it's the press for wake-up, send out a "KEY_F4" */
-        if(WAKE_UP_FROM_LP1_FLAG == 1) {
-                printk("Send First KEY_F4(LP1) -->");
+        if((WAKE_UP_FROM_LP1_FLAG == 1) && (delatime < 1)) {
+		do_gettimeofday(&last_receive_time);
                 F4_Deal(1);     /* Send a simulate to upper  (PowerManager Service) */
         } else {
-                printk("F4_Deal(0)-->");
                 F4_Deal(0);
         }
 
@@ -2056,15 +2084,14 @@ static void Resume_Isr(void *arg)
                                 break;
 
                         /* If WAKE_UP_FROM_LP1_FLAG is set, left
-                           (before this, PMU flag was already cleared and F4 was sent) */
+                           (before this, PMU flag was already cleared and F4 was sent)
+                           WAKE_UP flag will be reset before leaving ISR*/
                         if(WAKE_UP_FROM_LP1_FLAG == 1) {
-                                WAKE_UP_FROM_LP1_FLAG = 0;
-                                printk("LP1(PMU flag set) -->");
                                 goto left;
                         }
 
+                        /* If the screen is still off, set the flag and leave.*/
                         if(screen_flag == 1) {
-                                printk("Left2Light-->");
                                 PM_SCREEN_IS_OFF = 0;
                                 /* Must left to avoid tegra-ghrost error */
                                 F4_Deal(3);
@@ -2072,8 +2099,6 @@ static void Resume_Isr(void *arg)
                         }
                 } else if (delatime >= 1) {
                         if(screen_flag == 1) {
-                                printk("Left2Light(noflag)-->");
-                                printk("delatime = %d\n",delatime);
                                 PM_SCREEN_IS_OFF = 0;
                                 /* Must left to avoid tegra-ghrost error */
                                 F4_Deal(3);
@@ -2084,68 +2109,55 @@ static void Resume_Isr(void *arg)
                 /* Clear EXITSLREQ to 1(0x14, bit B1) in 6s */
 		if(((gpio_get_value(pinnum)& 0x1)) && (delatime < 6)) {
                         if(WAKE_UP_FROM_LP1_FLAG == 1) { /* Release quickly and PMU flag is not set */
-                                /* Fixme : need clear PMU flag here although this flag is not set ? */
-                                printk("Release quickly(LP1) -->");
-                                WAKE_UP_FROM_LP1_FLAG = 0;
+                                /* Key was released and power is already
+                                   up, so just leave */
                                 goto left;
                         } else {
-                                printk("PressRelease -->");
                                 /* Wake up another CPU */
                                 pmu_tegra_cpufreq_hotplug(1);
                         }
 
-			break;
+		break;
 		}
 		
                 /* Time come to 2+s, then always pop out selection box */
 		if((delatime >= 2) && (flags == 0)) {
 			/* Wake up another CPU to deal F4_KEY */
 			pmu_tegra_cpufreq_hotplug(1);
-
 			if(WAKE_UP_FROM_LP1_FLAG == 0) {
-                                printk("Send F4_Deal (0~2s) --> ");
                                 F4_Deal(3);
                                 flags++;
                         }
 		}
 
                 /* If press duration is more than 9 seconds, power off device */
-		if(delatime >= 9) {
+		if(delatime > 9 && delatime < 16) {
                         data = 0x08;
-                        
                         power_fs_sync();
-
                         printk("Hard Power Off.\n");
-                        
                         msleep(800);
-                        
                         Tps6586xI2cWrite8(G_hdev, TPS6586x_R14_SUPPLYENE, data);
-			
 			break;
 		}
 
 		do_gettimeofday(&cur_time);
 		delatime = cur_time.tv_sec - start_time.tv_sec;
-	}
+		
+	} /* end of for loop */
         
-        printk("delatime(%d) -->", delatime);
-
-        /* If press duration is less than 2s, send a KEY_F4 to try to drive device to sleep */
+        /* If press duration is less than 2s and we are already awake,
+            send a KEY_F4 to try to drive the device to sleep */
 	if((WAKE_UP_FROM_LP1_FLAG == 0) && (delatime < 2)) {
-                printk("<--F4_Deal(0) >>");
                 F4_Deal(0);
         }
 
 left:
+        atomic_set(&resume_isr_lock, 0);
+
         /* Ok, in this loop, clear WAKE_UP_FROM_LP1_FLAG */
         WAKE_UP_FROM_LP1_FLAG = 0;
 
-        //Add for double click in 250ms; 2011-03-01
+        //Add for double click in 500ms; 2010-10-27
         do_gettimeofday(&last_receive_time);
-
-        atomic_set(&resume_isr_lock, 0);
-
-	printk("Out. \n");
-
-	NvOdmGpioInterruptDone(hGpioIntr);
+	
 }

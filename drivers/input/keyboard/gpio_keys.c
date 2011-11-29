@@ -94,7 +94,6 @@ static void gpio_keys_report_event(struct work_struct *work)
                         input_event(input, type, button->code, !!state);
                 }
 	}
-	
 	input_sync(input);
 	//printk("gpio_keys_report_event=%d,state=%d\n",button->code,!!state);
 }
@@ -133,7 +132,6 @@ static irqreturn_t gpio_keys_isr(int irq, void *dev_id)
 {
 	struct gpio_button_data *bdata = dev_id;
 	struct gpio_keys_button *button = bdata->button;
-	printk("gpio_keys_isr\n");
 	BUG_ON(irq != gpio_to_irq(button->gpio));
 
 	if (button->debounce_interval)

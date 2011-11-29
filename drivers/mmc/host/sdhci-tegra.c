@@ -42,6 +42,11 @@
 #define DRIVER_NAME "tegra-sdhci"
 //#define MMC_PATCH_1
 
+#define SDHCI_TEGRA_MIN_CONTROLLER_CLOCK	12000000
+#define SDHCI_TEGRA_STANDARD_CONTROLLER_CLOCK	100000000
+#define SDHCI_TEGRA_MAX_CONTROLLER_CLOCK	208000000
+
+
 #ifdef MMC_PATCH_1
 static atomic_t detect_lock;
 #endif
@@ -152,6 +157,12 @@ static void tegra_sdhci_set_clock(struct sdhci_host *sdhost,
 	unsigned int clock)
 {
 	struct tegra_sdhci *host = sdhci_priv(sdhost);
+
+	if (clock > SDHCI_TEGRA_MIN_CONTROLLER_CLOCK &&
+		clock <= SDHCI_TEGRA_STANDARD_CONTROLLER_CLOCK)
+		clock = SDHCI_TEGRA_STANDARD_CONTROLLER_CLOCK;
+	else
+	clock = SDHCI_TEGRA_MAX_CONTROLLER_CLOCK;
 
 	if (clock && !host->clk_enable) {
 		clk_enable(host->clk);
