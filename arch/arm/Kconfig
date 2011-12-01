@@ -1291,18 +1291,15 @@ config LEDS_CPU
 	  functions. You may choose to use both, but the Timer LED function
 	  will overrule the CPU usage LED.
 
-config ALIGNMENT_TRAP
-	bool
-	depends on CPU_CP15_MMU
-	default y if !ARCH_EBSA110
+config ALLOW_CPU_ALIGNMENT
+        bool "Allow CPU-based alignment handling"
+	default y if ARCH_MSM_SCORPION || ARCH_MSM_SCORPIONMP
 	help
-	  ARM processors cannot fetch/store information which is not
-	  naturally aligned on the bus, i.e., a 4 byte fetch must start at an
-	  address divisible by 4. On 32-bit ARM processors, these non-aligned
-	  fetch/store instructions will be emulated in software if you say
-	  here, which has a severe performance impact. This is necessary for
-	  correct operation of some network protocols. With an IP-only
-	  configuration it is safe to say N, otherwise say Y.
+	  Advanced ARM processors, such as the Cortex series and ARMv7-based
+	  CPUS are capable of performing unaligned accesses for many types of
+	  memory accesses.  Typically, using a cpu-based alignment fixup is
+	  faster than doing such a fixup in software.  For best performance
+	  on advanced CPUs, say Y here.
 
 config UACCESS_WITH_MEMCPY
 	bool "Use kernel mem{cpy,set}() for {copy_to,clear}_user() (EXPERIMENTAL)"
