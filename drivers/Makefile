@@ -5,8 +5,6 @@
 # Rewritten to use lists instead of if-statements.
 #
 
-subdir-ccflags-y		+= -O2 
-
 obj-y				+= gpio/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
