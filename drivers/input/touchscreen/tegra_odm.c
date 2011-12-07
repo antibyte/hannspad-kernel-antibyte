@@ -55,7 +55,7 @@
 
 /* the kernel supports 5 fingers only as of now */
 #define MAX_FINGERS	5
-#define TOUCH_INTERVAL		35
+#define TOUCH_INTERVAL		20
 
 #define NVODM_MAX_TOUCH_SCREEN_LINE 60
 

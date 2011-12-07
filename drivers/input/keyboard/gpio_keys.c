@@ -59,30 +59,25 @@ static void gpio_keys_report_event(struct work_struct *work)
 		input_event(input, type, button->code, !!state);
 	} else {
 		if(f4_send_state == 1) { /* Special state for just Wake-Up from LP1 */
-                        printk("Send a simulate KEY_F4 **** \n");
+                        //printk("Send a simulate KEY_F4 **** \n");
                         input_event(input, type, button->code, !!state);
                         input_sync(input);
                         mdelay(80);
                         input_event(input, type, button->code, !!!state);
                         input_sync(input);
-
                         f4_send_state = 0;
-                                                
-                        mdelay(300);
-
-                        input_event(input, type, button->code, !!state);
-                        input_sync(input);
                         mdelay(80);
-                        input_event(input, type, button->code, !!!state);
-                        input_sync(input);
-
+                        //input_event(input, type, button->code, !!state);
+                        //input_sync(input);
+                        //mdelay(80);
+                        //input_event(input, type, button->code, !!!state);
+                        //input_sync(input);
                         input_event(input, type, KEY_BACK, !!state);
                         input_sync(input);
                         mdelay(80);
                         input_event(input, type, KEY_BACK, !!!state);
 	        } else if (f4_send_state == 2) {
                         f4_send_state = 0;
-
                         input_event(input, type, KEY_BACK, !!state);
                         input_sync(input);
                         mdelay(80);
@@ -113,18 +108,23 @@ void F4_Deal(unsigned int wake_up_flag)
 	{
 		struct gpio_button_data *bdata = bdata_F4;
 		struct gpio_keys_button *button = bdata->button;
-
+                
                 f4_send_state = wake_up_flag;
 
-                if(wake_up_flag == 1) {
+                if(wake_up_flag == 1)
+                {
                         wake_lock_timeout(&f4_wake_lock, (HZ * 5));
                 }
 
 		if (button->debounce_interval)
+		{
 			mod_timer(&bdata->timer,
 				jiffies + msecs_to_jiffies(button->debounce_interval));
+		}
 		else
+		{
 			queue_work(wq_struct, &bdata->work);
+		}
 	}
 }
 
@@ -178,6 +178,8 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 		__set_bit(EV_REP, input->evbit);
 
 	ddata->input = input;
+
+
 
 	for (i = 0; i < pdata->nbuttons; i++) {
 		struct gpio_keys_button *button = &pdata->buttons[i];
@@ -367,7 +369,7 @@ static struct platform_driver gpio_keys_device_driver = {
 static int __init gpio_keys_init(void)
 {
 	/* private workqueue instead global for gpio_keys */
-	wq_struct=create_singlethread_workqueue("gpio_keys");
+	wq_struct=create_workqueue("gpio_keys");
 	return platform_driver_register(&gpio_keys_device_driver);
 }
 

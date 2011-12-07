@@ -1154,11 +1154,11 @@ Tps6586xWriteVoltageReg(
             if (vddRail == TPS6586xPmuSupply_SoC)
             {
                 // Wait 10 secs for PMU to shutdown
-                NvOdmOsWaitUS(100000000);
+                NvOdmOsWaitUS(10000000); /* antibyte - fixed, this was 100 secs, not 10 */
             }
 
             if (status && (pSupplyInfo->ctrlRegInfo.flag != TPS6586x_RFF_INVALID))
-            {
+            {                         
                 status = Tps6586xI2cRead8(hDevice, pSupplyInfo->ctrlRegInfo.flag, &data);
                 if (status)
                 {
@@ -2035,9 +2035,6 @@ static void handle_power_button()
 	NvU32 delatime = 0;
         NvU32 screen_flag = PM_SCREEN_IS_OFF;
         
-        /*printk("PMU Resume Irq. In %d, %d --> ", WAKE_UP_FROM_LP1_FLAG, screen_flag);*/
-	/* Check if we are already handling an interrupt */
-
         /* If it is already released, left */
         if(((gpio_get_value(pinnum)& 0x1)) && (WAKE_UP_FROM_LP1_FLAG != 1)) { 
                 goto left;
@@ -2055,8 +2052,10 @@ static void handle_power_button()
         /* If it's the press for wake-up, send out a "KEY_F4" */
         if((WAKE_UP_FROM_LP1_FLAG == 1) && (delatime < 1)) {
 		do_gettimeofday(&last_receive_time);
+		pmu_tegra_cpufreq_hotplug(1);
                 F4_Deal(1);     /* Send a simulate to upper  (PowerManager Service) */
-        } else {
+		goto left;
+        } else {  		/* we are awake, so we go for shutdown, sleep or menu */
                 F4_Deal(0);
         }
 
@@ -2108,14 +2107,14 @@ static void handle_power_button()
 
                 /* Clear EXITSLREQ to 1(0x14, bit B1) in 6s */
 		if(((gpio_get_value(pinnum)& 0x1)) && (delatime < 6)) {
-                        if(WAKE_UP_FROM_LP1_FLAG == 1) { /* Release quickly and PMU flag is not set */
-                                /* Key was released and power is already
+                        if(WAKE_UP_FROM_LP1_FLAG == 1) {
+		                /* Key was released and power is already
                                    up, so just leave */
                                 goto left;
                         } else {
                                 /* Wake up another CPU */
                                 pmu_tegra_cpufreq_hotplug(1);
-                        }
+                    		}
 
 		break;
 		}
